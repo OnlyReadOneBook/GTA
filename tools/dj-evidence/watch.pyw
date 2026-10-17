@@ -86,7 +86,7 @@ class Watch:
         sources.mkdir(exist_ok=True)
         hashes = {}
         for relative in ['Main.ahk', 'Features/Earn/EarnTasks.ahk', 'Features/Earn/EarnCore.ahk',
-                         'Features/Earn/EarnUI.ahk', 'Features/Earn/EarnScreen.ahk', 'Config.ini']:
+                         'Features/Earn/Earner.ahk', 'Features/Earn/EarnScreen.ahk', 'Config.ini']:
             source = self.repo / relative
             try:
                 data = source.read_bytes()
