@@ -2,7 +2,7 @@ function Get-CiCheckPlan {
     param([string[]]$ChangedFiles, [switch]$Full)
 
     $suiteNames = @(
-        'test-earner','test-earnledger','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop',
+        'test-earner','test-earnledger','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop','test-held-keys',
         'test-earnnav','test-earntasks','test-earnblip','test-earnpolicy','test-earnscreen','test-earnscreen-command',
         'test-earnvinewood','test-earnwarehouse-read','test-earnwarehouse','test-earnstaff',
         'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-discord-hud','test-discordhud-launch','test-overlay-place','test-memguard','test-earndj',

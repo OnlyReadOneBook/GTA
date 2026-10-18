@@ -23,20 +23,20 @@ for action in ["abort", "physical_stop", "focus"] {
     for boundary in [230, 330] {
         Reset(boundary, action)
         ok := BotWarpSteamJoin(1, &why)
-        expected := boundary = 230 ? "click:Left" : "click:Left,^a"
+        expected := boundary = 230 ? "click:Left" : "click:Left,{Blind}^a"
         Check(!ok && EventText() = expected && why != "", "filter wait " boundary " interrupted: " action " (" EventText() ")")
     }
 }
 for action in ["abort", "physical_stop"] {
     Reset(790, action)
     ok := BotWarpSteamJoin(1, &why)
-    Check(!ok && why != "" && EventText() = "click:Left,^a,{U+0041},{U+0042},click:Right,click:Left",
+    Check(!ok && why != "" && EventText() = "click:Left,{Blind}^a,{Blind}{U+0041},{Blind}{U+0042},click:Right,click:Left",
         "stop after Join Game prevents returning to game: " action)
 }
 Reset()
 Check(BotWarpSteamClick(10, 20, "Left", "ahk_id 1", &why) && EventText() = "click:Left", "normal click")
 Reset()
-Check(BotWarpSteamJoin(1, &why) && EventText() = "click:Left,^a,{U+0041},{U+0042},click:Right,click:Left", "normal join")
+Check(BotWarpSteamJoin(1, &why) && EventText() = "click:Left,{Blind}^a,{Blind}{U+0041},{Blind}{U+0042},click:Right,click:Left", "normal join")
 Reset()
 gAbort := true
 Check(!BotWarpSteamClick(10, 20, "Left", "ahk_id 1", &why) && events.Length = 0, "stopped entry")

@@ -7,13 +7,29 @@ PressKey(key, count := 1, betweenDelay := 0) {
     keyHoldTime := config["Settings"]["KeyHoldTime"]
     
     Loop count {
-        Send("{" key " down}")
-        Sleep(keyHoldTime)
-        Send("{" key " up}")
+        if (MacroKeyPhysicallyHeld(key))
+            return
+        Send("{Blind}{" key " down}")
+        try Sleep(keyHoldTime)
+        finally ReleaseMacroKey(key)
         
         ; 마지막이 아니고 betweenDelay가 설정되었으면 적용
         if (A_Index < count && betweenDelay > 0) {
             Sleep(betweenDelay)
         }
     }
+}
+
+MacroKeyPhysicallyHeld(key) {
+    if (key = "Shift")
+        return GetKeyState("LShift", "P") || GetKeyState("RShift", "P")
+    return GetKeyState(key, "P")
+}
+
+ReleaseMacroKey(key) {
+    ; A physical press during the macro's wait transfers the hold to the user.
+    if (MacroKeyPhysicallyHeld(key))
+        return false
+    Send("{Blind}{" key " up}")
+    return true
 }

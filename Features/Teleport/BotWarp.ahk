@@ -395,14 +395,14 @@ BotWarpSteamJoin(chat, &why) {
         why := BotWarpStopPressed() ? "중단" : "스팀 창이 앞에 없음"
         return false
     }
-    Send("^a")
+    Send("{Blind}^a")
     Sleep(100)
     for ch in StrSplit(BOTWARP_FILTER_TEXT) {
         if (BotWarpStopPressed() || !WinActive(chatWin)) {
             why := BotWarpStopPressed() ? "중단" : "스팀 창이 앞에 없음"
             return false
         }
-        Send("{U+" Format("{:04X}", Ord(ch)) "}")
+        Send("{Blind}{U+" Format("{:04X}", Ord(ch)) "}")
     }
     if (!BotWarpSteamWait(s["BotWarpSteamFilterMs"])) {
         why := "중단"

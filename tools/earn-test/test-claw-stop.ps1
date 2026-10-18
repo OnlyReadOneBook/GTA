@@ -3,8 +3,8 @@ param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.
 $ErrorActionPreference = 'Stop'
 $claw = Get-Content (Join-Path $PSScriptRoot '..\..\Features\ClawMachine.ahk') -Raw -Encoding UTF8
 $keys = Get-Content (Join-Path $PSScriptRoot '..\..\Core\PressKey.ahk') -Raw -Encoding UTF8
-$functions = @('ClawFailure', 'ClawWaitFor', 'ClawHold', 'ClawAttempt', 'ClawLoopStep', 'PressKey') | ForEach-Object {
-    $source = if ($_ -eq 'PressKey') { $keys } else { $claw }
+$functions = @('ClawFailure', 'ClawWaitFor', 'ClawHold', 'ClawAttempt', 'ClawLoopStep', 'PressKey', 'MacroKeyPhysicallyHeld', 'ReleaseMacroKey') | ForEach-Object {
+    $source = if ($_ -in @('PressKey', 'MacroKeyPhysicallyHeld', 'ReleaseMacroKey')) { $keys } else { $claw }
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "$_ missing" }
     $body
@@ -84,6 +84,7 @@ FakeSleep(ms) {
 }
 RecordSend(value) {
     global events, held, stage, noDown
+    value := StrReplace(value, "{Blind}")
     if (!RegExMatch(value, "^\{(.+) (down|up)\}$", &match))
         throw Error("Unexpected input stub: " value)
     key := match[1]
@@ -123,6 +124,7 @@ ClawTrace(step, reason := "", event := "") {
 }
 ClawLog(*) => 0
 ShowTooltip(*) => 0
+GetKeyState(*) => false
 '@
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath

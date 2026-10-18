@@ -519,9 +519,11 @@ EarnWalk(path) {
             return false
         if (!EarnHudVisible())
             return EarnFail("걷기: 게임 HUD를 확인하지 못함")
-        Send("{" key " down}")
-        ok := EarnSleep(ms)
-        Send("{" key " up}")
+        if (MacroKeyPhysicallyHeld(key))
+            return false
+        Send("{Blind}{" key " down}")
+        try ok := EarnSleep(ms)
+        finally ReleaseMacroKey(key)
         if (!ok)
             return false
         Sleep(250)

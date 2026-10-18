@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 param(
     [string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe",
     [string]$SourceRoot = (Join-Path $PSScriptRoot '..\..')
@@ -29,8 +29,9 @@ foreach ($name in @('KeyHookWatchdog', 'KeyHookProbe', 'KeyProbeSeen')) {
     if ($body) { $maintenanceBodies += $body }
 }
 $maintenance = ($maintenanceBodies -join "`n").Replace('A_TickCount', 'FakeTick()')
+$maintenance = $maintenance.Replace('DllCall("GetAsyncKeyState", "int", vk, "short")', 'HarnessHeldKey(vk)')
 $maintenance = $maintenance.Replace('InstallKeybdHook(', 'HarnessInstallKeybdHook(').Replace('SendEvent(', 'HarnessSendEvent(').Replace('SendLevel(', 'HarnessSendLevel(').Replace('MacroLog(', 'HarnessMacroLog(')
-$maintenanceCalls = @('KeyHookWatchdog', 'KeyHookProbe', 'KeyProbeSeen', 'FakeTick', 'HarnessInstallKeybdHook', 'HarnessSendEvent', 'HarnessSendLevel', 'HarnessMacroLog', 'if')
+$maintenanceCalls = @('KeyHookWatchdog', 'KeyHookProbe', 'KeyProbeSeen', 'FakeTick', 'HarnessHeldKey', 'HarnessInstallKeybdHook', 'HarnessSendEvent', 'HarnessSendLevel', 'HarnessMacroLog', 'if')
 $maintenanceCode = [regex]::Replace($maintenance, '(?m);[^\r\n]*', '')
 foreach ($call in [regex]::Matches($maintenanceCode, '(?<![\w.])([A-Za-z_]\w*)\s*\(')) {
     if ($call.Groups[1].Value -cnotin $maintenanceCalls) { throw "Unsafe maintenance call: $($call.Groups[1].Value)" }
@@ -196,11 +197,11 @@ Check(activations = 1 && events.Length = 1 && !gAFKBusy, "fresh hook still sees 
 Reset()
 focused := false, idleMs := 301000, activateWorks := false, altRescue := true, frontExe := "TextInputHost.exe"
 AntiAFKTick()
-Check(activations = 2 && events.Length = 3 && events[1] = "{Alt down}{Alt up}" && LogHas("Alt 보조: TextInputHost.exe"), "input host in front gets one Alt")
+Check(activations = 2 && events.Length = 3 && events[1] = "{Blind}{Alt down}{Alt up}" && LogHas("Alt 보조: TextInputHost.exe"), "input host in front gets one Alt")
 Reset()
 focused := false, idleMs := 301000, activateWorks := false, altRescue := true, frontExists := false
 AntiAFKTick()
-Check(activations = 2 && events.Length = 3 && events[1] = "{Alt down}{Alt up}" && LogHas("앞 창 없음"), "no foreground window gets one Alt")
+Check(activations = 2 && events.Length = 3 && events[1] = "{Blind}{Alt down}{Alt up}" && LogHas("앞 창 없음"), "no foreground window gets one Alt")
 Reset()
 focused := false, idleMs := 301000, interrupt := true, stealBack := true
 AntiAFKTick()
@@ -367,6 +368,7 @@ RunMaintenanceTimers() {
         }
     }
 }
+HarnessHeldKey(vk) => 0
 HarnessInstallKeybdHook(install, force) {
     global maintenanceWatchdogs
     if (!install || !force)

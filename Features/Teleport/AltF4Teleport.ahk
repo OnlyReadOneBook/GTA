@@ -37,7 +37,7 @@ ExecuteAltF4Teleport() {
         Sleep(s["JobWarpConfirmToAltF4Ms"])
         if (gAbort || !IsGTAActive())
             return
-        Send("{Alt down}{F4}{Alt up}")
+        Send("{Blind}{Alt down}{F4}{Alt up}")
         MacroLog("jobwarp", "alt+f4 sent")
 
         ; 종료 확인창 뒤에서 작업이 로딩된다. 오른쪽 아래 스피너가 사라지고 "No [Esc]  Yes [↵]" 안내가 뜬 뒤에 No 를 눌러야
