@@ -1,4 +1,5 @@
 ; === 공통 함수 ===
+#Include %A_LineFile%\..\KeyOwnership.ahk
 ; GTA 창 판정. 제목 부분일치만 쓰면 스팀 설치 폴더를 연 탐색기("Grand Theft Auto V Enhanced")도 맞으므로 exe 를 같이 본다.
 global GTA_WIN := "Grand Theft Auto V ahk_exe GTA5_Enhanced.exe"
 

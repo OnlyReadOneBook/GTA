@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Include %A_LineFile%\..\KeyOwnership.ahk
 
 ; 키 누르기 함수
 PressKey(key, count := 1, betweenDelay := 0) {
@@ -18,18 +19,4 @@ PressKey(key, count := 1, betweenDelay := 0) {
             Sleep(betweenDelay)
         }
     }
-}
-
-MacroKeyPhysicallyHeld(key) {
-    if (key = "Shift")
-        return GetKeyState("LShift", "P") || GetKeyState("RShift", "P")
-    return GetKeyState(key, "P")
-}
-
-ReleaseMacroKey(key) {
-    ; A physical press during the macro's wait transfers the hold to the user.
-    if (MacroKeyPhysicallyHeld(key))
-        return false
-    Send("{Blind}{" key " up}")
-    return true
 }

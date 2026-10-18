@@ -3,6 +3,7 @@ param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.
 $ErrorActionPreference = 'Stop'
 $claw = Get-Content (Join-Path $PSScriptRoot '..\..\Features\ClawMachine.ahk') -Raw -Encoding UTF8
 $keys = Get-Content (Join-Path $PSScriptRoot '..\..\Core\PressKey.ahk') -Raw -Encoding UTF8
+$keys += "`n" + (Get-Content (Join-Path $PSScriptRoot '..\..\Core\KeyOwnership.ahk') -Raw -Encoding UTF8)
 $functions = @('ClawFailure', 'ClawWaitFor', 'ClawHold', 'ClawAttempt', 'ClawLoopStep', 'PressKey', 'MacroKeyPhysicallyHeld', 'ReleaseMacroKey') | ForEach-Object {
     $source = if ($_ -in @('PressKey', 'MacroKeyPhysicallyHeld', 'ReleaseMacroKey')) { $keys } else { $claw }
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^\r\n]*\) \{.*?^\}')).Value
