@@ -231,7 +231,7 @@ AFKRefocusGTA(idleSec, othersMs) {
                 activated := WinWaitActive("ahk_id " gtaHwnd, , 2)
             } else if (!fg || fgExe = "TextInputHost.exe") {
                 via := " (Alt 보조: " (fg ? fgExe : "앞 창 없음") ")"
-                Send("{Alt down}{Alt up}")
+                Send("{Blind}{Alt down}{Alt up}")
                 WinActivate("ahk_id " gtaHwnd)
                 activated := WinWaitActive("ahk_id " gtaHwnd, , 2)
             }
@@ -525,7 +525,7 @@ BringGTAToFront() {
     }
     Loop 2 {
         if (A_Index = 2)
-            Send("{vkE8}")
+            Send("{Blind}{vkE8}")
         fg := DllCall("GetForegroundWindow", "ptr")
         fgThread := DllCall("GetWindowThreadProcessId", "ptr", fg, "ptr", 0, "uint")
         myThread := DllCall("GetCurrentThreadId", "uint")
@@ -546,7 +546,7 @@ BringGTAToFront() {
     fgExe := ""
     try fgExe := WinGetProcessName("ahk_id " fg)
     if (!fg || fgExe = "TextInputHost.exe") {
-        Send("{Alt down}{Alt up}")
+        Send("{Blind}{Alt down}{Alt up}")
         try WinActivate("ahk_id " hwnd)
         Sleep(800)
         if (WinActive("ahk_id " hwnd)) {

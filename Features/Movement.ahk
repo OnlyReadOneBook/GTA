@@ -11,11 +11,11 @@ ToggleWalk() {
     
     if (!wRunning) {
         wRunning := true
-        Send("{w down}")
+        Send("{Blind}{w down}")
         ShowTooltip("걷기 시작")
     } else {
         wRunning := false
-        Send("{w up}")
+        ReleaseMacroKey("w")
         ShowTooltip("걷기 중지")
     }
 }
@@ -28,11 +28,12 @@ ToggleRun() {
     
     if (!shiftWRunning) {
         shiftWRunning := true
-        Send("{Shift down}{w down}")
+        Send("{Blind}{LShift down}{w down}")
         ShowTooltip("뛰기 시작")
     } else {
         shiftWRunning := false
-        Send("{w up}{Shift up}")
+        ReleaseMacroKey("w")
+        ReleaseMacroKey("LShift")
         ShowTooltip("뛰기 중지")
     }
 }
@@ -45,7 +46,8 @@ StopRun() {
     
     if (shiftWRunning) {
         shiftWRunning := false
-        Send("{w up}{Shift up}")
+        ReleaseMacroKey("w")
+        ReleaseMacroKey("LShift")
         ShowTooltip("뛰기 중지")
     }
 }
@@ -60,12 +62,12 @@ ToggleVellumDriving() {  ; 함수명 변경
     
     if (!vellumDrivingRunning) {
         vellumDrivingRunning := true
-        Send("{w down}")
+        Send("{Blind}{w down}")
         SetTimer(PressLCtrlForVellum, vellumCtrlInterval)  ; 함수명도 변경
         ShowTooltip("🛩️ 벨럼 운전 모드 시작 (LCtrl 간격: " vellumCtrlInterval "ms)")
     } else {
         vellumDrivingRunning := false
-        Send("{w up}")
+        ReleaseMacroKey("w")
         SetTimer(PressLCtrlForVellum, 0)
         ShowTooltip("🛩️ 벨럼 운전 모드 중지")
     }

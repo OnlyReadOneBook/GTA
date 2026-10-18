@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Include %A_LineFile%\..\KeyOwnership.ahk
 
 ; 키 누르기 함수
 PressKey(key, count := 1, betweenDelay := 0) {
@@ -7,9 +8,11 @@ PressKey(key, count := 1, betweenDelay := 0) {
     keyHoldTime := config["Settings"]["KeyHoldTime"]
     
     Loop count {
-        Send("{" key " down}")
-        Sleep(keyHoldTime)
-        Send("{" key " up}")
+        if (MacroKeyPhysicallyHeld(key))
+            return
+        Send("{Blind}{" key " down}")
+        try Sleep(keyHoldTime)
+        finally ReleaseMacroKey(key)
         
         ; 마지막이 아니고 betweenDelay가 설정되었으면 적용
         if (A_Index < count && betweenDelay > 0) {

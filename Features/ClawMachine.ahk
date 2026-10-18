@@ -133,7 +133,9 @@ ClawHold(key, ms) {
         return ClawFailure("hold-" key, "focus-lost-before-hold")
     lostFocus := false
     aborted := false
-    Send("{" key " down}")
+    if (MacroKeyPhysicallyHeld(key))
+        return ClawFailure("hold-" key, "physical-key-held")
+    Send("{Blind}{" key " down}")
     try {
         deadline := A_TickCount + ms
         while (A_TickCount < deadline) {
@@ -148,7 +150,7 @@ ClawHold(key, ms) {
             Sleep(Min(20, deadline - A_TickCount))
         }
     } finally {
-        Send("{" key " up}")
+        ReleaseMacroKey(key)
     }
     if (aborted)
         return ClawFailure("hold-" key, "aborted")

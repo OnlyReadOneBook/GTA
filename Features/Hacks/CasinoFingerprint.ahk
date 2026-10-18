@@ -146,12 +146,12 @@ ExecuteFingerprintPath(matches) {
         ; 수평 이동
         if (xDiff > 0) {
             Loop xDiff {
-                Send("{d}")
+                Send("{Blind}{d}")
                 Sleep(25)
             }
         } else if (xDiff < 0) {
             Loop Abs(xDiff) {
-                Send("{a}")
+                Send("{Blind}{a}")
                 Sleep(25)
             }
         }
@@ -159,18 +159,18 @@ ExecuteFingerprintPath(matches) {
         ; 수직 이동
         if (yDiff > 0) {
             Loop yDiff {
-                Send("{s}")
+                Send("{Blind}{s}")
                 Sleep(25)
             }
         } else if (yDiff < 0) {
             Loop Abs(yDiff) {
-                Send("{w}")
+                PressKey("w")
                 Sleep(25)
             }
         }
         
         ; 선택
-        Send("{Enter}")
+        Send("{Blind}{Enter}")
         Sleep(500)
         
         currentX := target.x
@@ -179,7 +179,7 @@ ExecuteFingerprintPath(matches) {
     
     ; 완료
     Sleep(200)
-    Send("{Tab}")
+    Send("{Blind}{Tab}")
     ShowTooltip("✅ 지문 스캔 완료!", 2000)
 }
 

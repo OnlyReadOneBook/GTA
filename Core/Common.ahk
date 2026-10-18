@@ -1,4 +1,5 @@
 ; === 공통 함수 ===
+#Include %A_LineFile%\..\KeyOwnership.ahk
 ; GTA 창 판정. 제목 부분일치만 쓰면 스팀 설치 폴더를 연 탐색기("Grand Theft Auto V Enhanced")도 맞으므로 exe 를 같이 본다.
 global GTA_WIN := "Grand Theft Auto V ahk_exe GTA5_Enhanced.exe"
 
@@ -87,10 +88,10 @@ AnyInputToggleOn() {
 ; 매크로가 누르고 있을 수 있는 키 중 논리적으로 눌린 것만 뗀다. 사람이 물리적으로 누르고 있는 키는 건드리지 않는다.
 ; 종료·전체 멈춤 때 부른다. 이동 키를 누른 채 끝나면 캐릭터가 계속 걸어가 버린다(실측).
 ReleaseHeldKeys() {
-    for key in ["w", "a", "s", "d", "Shift", "LShift", "LCtrl", "Enter", "e", "m", "Up", "Down", "Left", "Right"] {
+    for key in ["w", "a", "s", "d", "LShift", "LCtrl", "Enter", "e", "m", "Up", "Down", "Left", "Right"] {
         try {
-            if (GetKeyState(key) && !GetKeyState(key, "P"))
-                Send("{" key " up}")
+            if (GetKeyState(key))
+                ReleaseMacroKey(key)
         }
     }
     try {

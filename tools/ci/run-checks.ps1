@@ -23,7 +23,7 @@ $workingTree = $null
 $runtimeVersion = $null
 $runtimeHash = $null
 $sourceHashes = @()
-$ahkSuites = @('test-earner', 'test-earnledger', 'test-antiafk', 'test-altf4teleport', 'test-botwarp-stop', 'test-claw-stop', 'test-autoclick-stop', 'test-earnnav', 'test-earntasks', 'test-earnblip',
+$ahkSuites = @('test-earner', 'test-earnledger', 'test-antiafk', 'test-altf4teleport', 'test-botwarp-stop', 'test-claw-stop', 'test-autoclick-stop', 'test-held-keys', 'test-earnnav', 'test-earntasks', 'test-earnblip',
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-discord-hud', 'test-discordhud-launch', 'test-overlay-place', 'test-memguard', 'test-earndj', 'test-phone-call-template')
 $allAuxChecks = @(

@@ -121,7 +121,7 @@ PressKey(key) {
 }
 Send(value) {
     global events, phase
-    if (value != "{Alt down}{F4}{Alt up}")
+    if (value != "{Blind}{Alt down}{F4}{Alt up}")
         throw Error("Unexpected Send: " value)
     events.Push("AltF4")
     phase := "quit"

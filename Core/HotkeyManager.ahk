@@ -87,8 +87,11 @@ SetupHotkeys() {
 
 ; Windows 는 저수준 키보드 훅이 콜백에 늦으면 말없이 떼어 버리는데 AHK 는 그걸 모른 채 살아 있다고 본다.
 ; 1010 19:21 에 띄운 매크로가 3시간 동안 F9 를 한 번도 받지 못했다(hotkey 기록에 received 없음). 그래서 1분마다
-; 강제로 다시 붙인다(Force). 훅이 살아 있어도 설치 상태만 다시 쓰므로 키 동작은 바뀌지 않는다.
+; 강제로 다시 붙인다(Force). 누른 이동 키의 물리 상태 추적이 끊기지 않게 키를 놓은 뒤로 미룬다.
 KeyHookWatchdog() {
+    for vk in [0x57, 0xA0, 0xA1]
+        if (DllCall("GetAsyncKeyState", "int", vk, "short") & 0x8000)
+            return
     InstallKeybdHook(true, true)
 }
 
