@@ -1342,10 +1342,9 @@ PixelGetColor(x,y) {
     $policyText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnPolicy.ahk') -Raw -Encoding UTF8
     $screenText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk') -Raw -Encoding UTF8
     $bunkerPolicy = "`n" + (Get-EarnFunctionBody $policyText 'EarnBunkerOrderPlan')
-    $bunkerPolicy += "`n" + (Get-EarnFunctionBody $sourceText 'EarnBunkerInTransit')
     $bunkerObserve = "`n" + (Get-EarnFunctionBody $sourceText 'EarnBunkerObservePlan')
     $bunkerTaskDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnBunkerTransitAt := 0, gEarnBunkerTransitSupply := 0
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false
 global c := [], buyCalls := 0, beginCalls := 0, endCalls := 0
 ; stock, supply, interval, begin OK, buy OK, end OK, result, buys, ends, due milliseconds.
 cases := [[0.4,1,8400,true,true,true,true,0,1,60000],
@@ -1412,16 +1411,11 @@ for row in [[0.4,1,8400,false,true,false,true,0,0,60000],
     if (c[1] < 0 ? gEarnSellNotices.Get("bunker", "") != "기존 벙커 경고" : gEarnSellNotices.Has("bunker"))
         throw Error("Shared-session bunker notice confirmation changed")
 }
-; 1018: 배송 중 표시 뒤 대기 분기(79%)에서 도착을 봤으면, 다시 0%가 됐을 때 옛 주문으로 구매를 막지 않는다.
-config["Settings"]["EarnBunkerIntervalSec"] := 1680, gEarnBunkerTransitAt := A_TickCount, gEarnBunkerTransitSupply := 0
-c := [0.4,0.75,1680,true,true,true,true,0,1,60000], buyCalls := 0, gEarnNextDue := Map("bunker",0)
-EarnBunkerTask()
-if (gEarnBunkerTransitAt || buyCalls)
-    throw Error("Bunker arrival seen in wait branch must clear transit")
-config["Settings"]["EarnBunkerIntervalSec"] := 8400, c := [0.4,0,8400,true,true,true,true,1,1,60000], gEarnBunkerOrdered := false
-EarnBunkerTask()
-if (buyCalls != 1)
-    throw Error("Bunker must buy after observed arrival drained to zero")
+; 1018: 직전에 주문했어도 막대가 사야 할 때면 매번 벙커에 들어간다(배송 중 기록으로 건너뛰지 않는다).
+config["Settings"]["EarnBunkerIntervalSec"] := 8400, c := [0.4,0,8400,true,true,true,true,1,1,60000], buyCalls := 0, gEarnNextDue := Map("bunker",0)
+EarnBunkerTask(), EarnBunkerTask()
+if (buyCalls != 2)
+    throw Error("Bunker must reopen on every empty-supply observation after an order")
 FileAppend("PASS BunkerTask cases=19`n", "*")
 ExitApp(0)
 EarnTaskMCTBegin() {
@@ -1454,7 +1448,7 @@ EarnFail(*) => false
 '@
     Invoke-EarnOfflineCheck 'BunkerTask' 'EarnBunkerTask' ($bunkerTaskDriver + $bunkerPolicy + $bunkerObserve) 19
     $bunkerObserveDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnBunkerTransitAt := 0, gEarnBunkerTransitSupply := 0
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false
 global c := Map(), clockMs := 0, supplyNow := 0.21, stockNow := 0.4,
     refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], abortNow := false, reads := 0
 ; Name, observations/options, result, purchases, next delay, expected observation time.
@@ -1572,7 +1566,7 @@ EarnFail(*) => false
     } finally { $sourceText = $savedBunkerSource }
     $taskFinallyDriver = @'
 global config := Map("Settings",Map("EarnBunkerIntervalSec",8400,"EarnDJPopularityPct",95)),
-    gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnBunkerTransitAt := 0, gEarnBunkerTransitSupply := 0, gEarnFail := "",
+    gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnFail := "",
     endScene := "mct_title", endFailure := "", endOrder := "", endAbort := false,
     endBoss := true, endLogs := [], taskMode := "", originalException := 0, taskBegins := 0, taskEnds := 0
 cases := [
@@ -1658,7 +1652,7 @@ EarnLog(*) => true
     $taskFinallyDriver += "`n" + (Get-EarnFunctionBody $warehouseText 'EarnWarehouseTask')
     Invoke-EarnOfflineCheck 'MCTTaskFinally' 'EarnBunkerTask' $taskFinallyDriver 48
     $bunkerBuyDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnBunkerTransitAt := 0, gEarnBunkerTransitSupply := 0
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnBunkerOrdered := false, gEarnBunkerFull := false
 global c := Map(), stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0, resupplyClicks := 0
 ; Options, result, payments, cancellations, delivery confirmed, OCR reads.
 cases := [
