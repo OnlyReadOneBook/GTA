@@ -310,6 +310,9 @@ EarnBunkerTask(manageSession := true) {
         plan := EarnBunkerObservePlan(s["EarnBunkerIntervalSec"])
         if (!IsObject(plan))
             return false
+        ; 대기 분기로 끝나는 관측에서도 도착(막대 상승)을 반영한다. 구매 분기에서만 보면
+        ; 도착 뒤 다시 0%가 될 때까지 옛 주문을 배송 중으로 본다(1018 12:46 79% 관측 뒤 13:25 0% 에서 구매 생략).
+        inTransit := EarnBunkerInTransit(plan)
         gEarnBunkerFull := plan.reason = "stock_full"
         if (!gEarnBunkerFull)
             EarnClearStockNotice("bunker")
@@ -324,7 +327,7 @@ EarnBunkerTask(manageSession := true) {
             ; 생산 가속 여부를 시간으로 추측하지 않으며 구매는 새 잔량과 가격을 읽어 결정한다.
             gEarnNextDue["bunker"] := A_TickCount + Max(5000, Min(60000, plan.waitMs))
             ok := true
-        } else if (EarnBunkerInTransit(plan)) {
+        } else if (inTransit) {
             ; MCT 막대만 본다. 벙커 내부는 다시 열지 않는다. 도착하면 막대가 올라 이 분기가 풀린다.
             EarnLog("벙커: 보급 배송 중(" Round((A_TickCount - gEarnBunkerTransitAt) / 60000) "분 전 주문), 도착 전 벙커 재진입 생략")
             gEarnNextDue["bunker"] := A_TickCount + 60000

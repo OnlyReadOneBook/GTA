@@ -1412,6 +1412,16 @@ for row in [[0.4,1,8400,false,true,false,true,0,0,60000],
     if (c[1] < 0 ? gEarnSellNotices.Get("bunker", "") != "기존 벙커 경고" : gEarnSellNotices.Has("bunker"))
         throw Error("Shared-session bunker notice confirmation changed")
 }
+; 1018: 배송 중 표시 뒤 대기 분기(79%)에서 도착을 봤으면, 다시 0%가 됐을 때 옛 주문으로 구매를 막지 않는다.
+config["Settings"]["EarnBunkerIntervalSec"] := 1680, gEarnBunkerTransitAt := A_TickCount, gEarnBunkerTransitSupply := 0
+c := [0.4,0.75,1680,true,true,true,true,0,1,60000], buyCalls := 0, gEarnNextDue := Map("bunker",0)
+EarnBunkerTask()
+if (gEarnBunkerTransitAt || buyCalls)
+    throw Error("Bunker arrival seen in wait branch must clear transit")
+config["Settings"]["EarnBunkerIntervalSec"] := 8400, c := [0.4,0,8400,true,true,true,true,1,1,60000], gEarnBunkerOrdered := false
+EarnBunkerTask()
+if (buyCalls != 1)
+    throw Error("Bunker must buy after observed arrival drained to zero")
 FileAppend("PASS BunkerTask cases=19`n", "*")
 ExitApp(0)
 EarnTaskMCTBegin() {
