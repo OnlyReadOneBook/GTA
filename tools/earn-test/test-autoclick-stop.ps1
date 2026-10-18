@@ -11,6 +11,7 @@ foreach ($entry in @(
     @{ Path = 'Features/Movement.ahk'; Names = @('ToggleWalk','ToggleRun','StopRun','ToggleVellumDriving','PressLCtrlForVellum') },
     @{ Path = 'Core/ClickMouse.ahk'; Names = @('ClickMouse') },
     @{ Path = 'Core/PressKey.ahk'; Names = @('PressKey') },
+    @{ Path = 'Core/KeyOwnership.ahk'; Names = @('MacroKeyPhysicallyHeld','ReleaseMacroKey') },
     @{ Path = 'Core/Common.ahk'; Names = @('ReleaseHeldKeys') }
 )) {
     $source = Get-Content -LiteralPath (Join-Path $RepoRoot $entry.Path) -Raw -Encoding UTF8
@@ -82,7 +83,7 @@ for fn in [ToggleWalk, ToggleRun, ToggleVellumDriving] {
     fn.Call()
     focused := false
     StopAll("tray")
-    Check(!wRunning && !shiftWRunning && !vellumDrivingRunning && !Held("w") && !Held("shift") && !TimerOn("PressLCtrlForVellum"), fn.Name " stop releases held movement keys without focus")
+    Check(!wRunning && !shiftWRunning && !vellumDrivingRunning && !Held("w") && !Held("lshift") && !TimerOn("PressLCtrlForVellum"), fn.Name " stop releases held movement keys without focus")
 }
 
 Reset()
