@@ -490,7 +490,7 @@ for c in [["list","",true,"OR"],["stand","",true,"OR"],["chair","",true,"OR"],
     scene := c[1], failAt := c[2], order := "", softRetry := 0, spotClockMs := 0, sweepCalls := 0
     if (EarnTaskMCTBegin() != c[3] || order != c[4])
         throw Error("MCT begin guard: " c[1] "/" c[2] " order=" order)
-    if ((c[1] = "away" || c[1] = "sweep") && softRetry != 3)
+    if ((c[1] = "away" || c[1] = "sweep") && softRetry != 0.5)
         throw Error("MCT begin away must retry later instead of stopping")
     if (sweepCalls != 0)
         throw Error("MCT begin must wait without camera input when no prompt is seen: " c[1] " calls=" sweepCalls)
@@ -546,7 +546,33 @@ EarnSoftFail(reason, retryMin) {
 }
 EarnFail(*) => false
 '@
+    # 기준 시각이 없으면(F9·MCT 확인 이력 없음) 실제 함수가 입력 없이 false 를 돌려준다.
+    $mctDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`n"
     Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 10
+    # 1020 녹화: MCT 곁에서 시선만 돌아간 경우. 기준 시각 뒤 물리 입력이 없을 때만 걷지 않고 45도씩 돈다.
+    $turnDriver = @'
+global config := Map("Settings", Map("EarnTurnUnitsPerDeg", 2)), gEarnMCTSeenTick := 0, physIdle := 0, turns := 0, promptAt := 0
+for c in [[0, 99999, 3, 0], [1, 10, 3, 0], [1, 99999, 3, 3], [1, 99999, 0, 8]] {
+    gEarnMCTSeenTick := c[1] ? A_TickCount - 1000 : 0, physIdle := c[2], promptAt := c[3], turns := 0
+    found := EarnMCTTurnInPlace()
+    if (found != (promptAt && c[4] = promptAt) || turns != c[4])
+        throw Error("MCT turn-in-place: tick=" c[1] " idle=" physIdle " found=" found " turns=" turns)
+}
+FileAppend("PASS MCTTurnInPlace cases=4`n", "*")
+ExitApp(0)
+AFKPhysicalIdleMs() => physIdle
+EarnTurn(units, *) {
+    global turns
+    if (units != 90)
+        throw Error("turn step must be 45 degrees")
+    turns += 1
+    return true
+}
+EarnMCTSpotSeen() => promptAt && turns >= promptAt
+EarnWaitSeen(*) => false
+EarnLog(*) => 0
+'@
+    Invoke-EarnOfflineCheck 'MCTTurnInPlace' 'EarnMCTTurnInPlace' $turnDriver 4
     $mctCleanupSupport = @'
 EarnAborted() => endAbort
 EarnWaitSeen(name,area,timeoutMs) {
@@ -896,6 +922,7 @@ EarnTaskMCTEndWithManualRetry() => EarnTaskMCTEnd()
     $mctBeginCleanupDriver += "`n" + $mctCleanupSupport + "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd')
     $mctBeginCleanupDriver += "`nEarnSoftFail(reason, *) => EarnFail(reason)`n"
     $mctBeginCleanupDriver += "`nEarnMCTSpotSweep() => false`n"
+    $mctBeginCleanupDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`n"
     Invoke-EarnOfflineCheck 'MCTBeginCleanup' 'EarnTaskMCTBegin' $mctBeginCleanupDriver 14
     $mctRefreshDriver = @'
 global refreshOptions := Map(), refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
