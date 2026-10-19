@@ -184,7 +184,7 @@ for scenario in ["physical", "focus", "both"] {
     mode := scenario "-ocr"
     EarnTick()
     expectedAbort := scenario = "physical" ? "사용자 물리 입력으로 중단" : scenario = "focus" ? "GTA 포커스 판정 실패로 중단" : "사용자 물리 입력 및 GTA 포커스 판정 실패로 중단"
-    Check(gEarnFail = expectedAbort && HasLog("bunker: " expectedAbort " → 3분 뒤 다시") && tooltips[tooltips.Length] = "💰 " expectedAbort " → 3분 뒤 다시",
+    Check(gEarnFail = expectedAbort && HasLog("bunker: " expectedAbort " → 손을 떼면 바로 다시") && tooltips[tooltips.Length] = "💰 " expectedAbort " → 손을 떼면 바로 다시",
         scenario " scheduler and tooltip preserve the first reason after OCR overwrites gEarnFail")
 }
 Reset()
@@ -345,25 +345,25 @@ Reset()
 idleMs := 2000
 mode := "long-physical"
 EarnTick()
-Check(gEarnOn && !gAbort && idleMs > 2000 && gEarnDone["bunker"] = 0 && lockReleases = 1 && gEarnDue["bunker"] >= A_TickCount + 170000,
+Check(gEarnOn && !gAbort && idleMs > 2000 && gEarnDone["bunker"] = 0 && lockReleases = 1 && gEarnDue["bunker"] <= A_TickCount,
     "input during blocked work aborts even when newer idle exceeds start wait")
 Reset()
 idleMs := 0
-Check(EarnStatusText() = "수익: 입력 안정 대기 2초", "overlay shows two-second input countdown")
+Check(EarnStatusText() = "MCT + 바인우드 · 수익: 입력 안정 대기 2초", "overlay shows two-second input countdown")
 idleMs := 1999
-Check(EarnStatusText() = "수익: 입력 안정 대기 1초", "overlay keeps countdown before boundary")
+Check(EarnStatusText() = "MCT + 바인우드 · 수익: 입력 안정 대기 1초", "overlay keeps countdown before boundary")
 idleMs := 2000
-Check(EarnStatusText() = "수익: bunker 시작 대기", "overlay clears input countdown at boundary")
+Check(EarnStatusText() = "MCT + 바인우드 · 수익: bunker 시작 대기", "overlay clears input countdown at boundary")
 focused := false
-Check(EarnStatusText() = "수익: GTA 포커스 대기", "overlay explains focus wait")
+Check(EarnStatusText() = "MCT + 바인우드 · 수익: GTA 포커스 대기", "overlay explains focus wait")
 focused := true, otherBusy := true
-Check(EarnStatusText() = "수익: 다른 매크로 종료 대기", "overlay explains busy macro wait")
+Check(EarnStatusText() = "MCT + 바인우드 · 수익: 다른 매크로 종료 대기", "overlay explains busy macro wait")
 otherBusy := false
 for id in ["bunker", "dj"]
     gEarnDue[id] := A_TickCount + 5000
-Check(EarnStatusText() = "수익: 다음 bunker 0:05 뒤", "overlay preserves future due countdown")
+Check(EarnStatusText() = "MCT + 바인우드 · 수익: 다음 bunker 0:05 뒤", "overlay preserves future due countdown")
 gEarnCurrent := "bunker", idleMs := 0, focused := false
-Check(EarnStatusText() = "수익: bunker 진행 중", "running task status precedes startup wait")
+Check(EarnStatusText() = "MCT + 바인우드 · 수익: bunker 진행 중", "running task status precedes startup wait")
 Reset()
 otherBusy := true
 EarnTick()
@@ -606,14 +606,14 @@ EarnTick()
 Check(gEarnOn && gEarnSoftFails["bunker"] = 1 && gEarnDue["bunker"] > A_TickCount + 59000, "soft retry")
 gEarnDue["bunker"] := A_TickCount - 1
 EarnTick()
-Check(gEarnOn && stopped = 0 && gEarnSoftFails["bunker"] = 2 && gEarnDue["bunker"] >= fakeTick + 120000, "retry exhaustion increases backoff without stopping")
+Check(gEarnOn && stopped = 0 && gEarnSoftFails["bunker"] = 2 && gEarnDue["bunker"] > fakeTick + 59000 && gEarnDue["bunker"] < fakeTick + 120000, "repeated failure keeps the task wait without backoff or stopping")
 Reset()
 mode := "fail"
 EarnTick()
 Check(gEarnOn && stopped = 0 && releaseCount = 1 && !gEarnBusy && gEarnFailures.Has("bunker"), "individual failure records and continues")
 mode := "ok"
 EarnTick()
-Check(calls.Length = 2 && calls[2] = "dj" && gEarnDone["dj"] = 1, "other due task runs after failure")
+Check(calls.Length >= 2 && calls[calls.Length] = "dj" && gEarnDone["dj"] = 1, "other due task runs after failure even when the failed task retries at once")
 Reset()
 mode := "ambiguous"
 EarnTick()
@@ -628,7 +628,7 @@ endOK := false
 EarnTick()
 Check(gEarnOn && IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && !lockHeld, "cleanup failure schedules guarded recovery and releases lock")
 EarnTick()
-Check(calls.Length = 2 && endCount = 1, "recovery backoff sends no business input")
+Check(calls.Length = 2 && endCount = 2, "recovery retries cleanup at once without business input")
 gEarnTasks.Push({id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")})
 gEarnDue["warehouse"] := 0, gEarnDone["warehouse"] := 0
 endInput := true, fakeTick := gEarnRecovery.nextTick
@@ -639,7 +639,7 @@ endInput := false, idleMs := 60000
 endOK := true
 fakeTick := gEarnRecovery.nextTick
 EarnTick()
-Check(!IsObject(gEarnRecovery) && endCount = 3 && calls.Length = 2 && gEarnDone["bunker"] = 1, "known cleanup recovery finalizes once without repeating transactions")
+Check(!IsObject(gEarnRecovery) && endCount = 4 && calls.Length = 2 && gEarnDone["bunker"] = 1, "known cleanup recovery finalizes once without repeating transactions")
 Reset()
 endOK := false, endNoScreen := true
 EarnTick()
@@ -676,7 +676,7 @@ Check(gEarnOn && stopped = 0 && releaseCount = 1 && !gEarnBusy && InStr(gEarnFai
 Check(lockReleases = 1 && !lockHeld, "exception releases input lock")
 mode := "ok"
 EarnTick()
-Check(calls.Length = 2 && calls[2] = "dj", "other task continues after task exception")
+Check(calls.Length >= 2 && calls[calls.Length] = "dj", "other task continues after task exception")
 Reset()
 mode := "reenter"
 EarnTick()
@@ -707,7 +707,7 @@ Reset()
 mode := "physical"
 EarnTick()
 Check(gEarnOn && !gAbort && stopped = 0 && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnRetryIn = 0
-    && gEarnDue["bunker"] >= A_TickCount + 170000 && gEarnSoftFails.Get("bunker", 0) = 0, "physical input retries in 3 minutes instead of stopping")
+    && gEarnDue["bunker"] <= A_TickCount && gEarnSoftFails.Get("bunker", 0) = 0, "physical input retries as soon as idle instead of stopping")
 Reset()
 mode := "physical-pending"
 EarnTick()
@@ -716,13 +716,13 @@ Check(gEarnOn && gEarnHeld.Has("bunker") && state.Has("pending_bunker") && !gAbo
 Reset()
 mode := "focus"
 EarnTick()
-Check(gEarnOn && !gAbort && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnDue["bunker"] >= A_TickCount + 170000,
-    "focus loss retries in 3 minutes instead of stopping")
+Check(gEarnOn && !gAbort && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnDue["bunker"] <= A_TickCount,
+    "focus loss retries without a fixed wait instead of stopping")
 Reset()
 config["Settings"]["EarnUserIdleSec"] := 0
 mode := "idle-zero"
 EarnTick()
-Check(gEarnOn && gEarnDone["bunker"] = 0 && gEarnDue["bunker"] >= A_TickCount + 170000, "physical guard still enabled with zero start wait")
+Check(gEarnOn && gEarnDone["bunker"] = 0 && gEarnDue["bunker"] <= A_TickCount, "physical guard still enabled with zero start wait")
 Reset()
 mode := "pid"
 EarnTick()
@@ -877,7 +877,7 @@ ToggleEarner()
 Check(gEarnOn && gEarnMode = "apps" && stopped = 0 && !gEarnManualStop && gEarnDue["safe"] = safeDue && gEarnHeld.Has("staff"),
     "F9 off only drops MCT tasks and keeps Vinewood apps running without a stop")
 Check(endCount = 0 && bossOffCount = 0, "F9 off never runs MCT cleanup or CEO release")
-Check(InStr(EarnStatusText(), "유휴 앱 자동"), "idle status is explicit")
+Check(InStr(EarnStatusText(), "바인우드 · ") = 1, "idle status is explicit")
 mctOpen := true
 Check(EarnAFKCloseMCT(300) = "" && endCount = 0, "idle apps never invoke AFK MCT cleanup")
 SetEarner(false, "전체 멈춤")

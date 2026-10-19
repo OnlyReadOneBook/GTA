@@ -343,10 +343,10 @@ EarnVinewoodOpen(manageMCT := true) {
         ; 그때 CEO·MC 상태는 사용자가 정한 것이라 건드리지 않는다.
         waitedAtMCT := false
         if (!atMCT && !EarnVinewoodWaitFreeHud(3000, &waitedAtMCT)) {
-            ; 아직 아무 입력도 안 보낸 단계다. MCT 작업처럼 끄지 않고 3분 뒤 다시 한다
+            ; 아직 아무 입력도 안 보낸 단계다. MCT 작업처럼 끄지 않고 바로 다시 한다
             ; (1004 21:56 사용자가 일시정지 메뉴를 연 채 손을 떼자 MCT 작업은 미뤄졌는데 금고만 자동화를 껐다).
             global gEarnRetryIn
-            gEarnRetryIn := 3 * 60000
+            gEarnRetryIn := 0
             return EarnFail("Vinewood 앱: 사용자 입력 유휴 또는 메뉴 없는 게임 HUD 미확인")
         }
         ; 대기 중 MCT 안내가 나타났다면 일반 금고 경로의 기존 CEO 정리 계약을 유지한다.
@@ -411,11 +411,11 @@ EarnVinewoodOpen(manageMCT := true) {
             return false
     }
     ; Right 뒤 선택이 안 보일 때가 있다(1005 06:30 실측, 바로 다음 회차는 정상). 앱에 들어가기 전이므로
-    ; 전화를 닫고 3분 뒤 다시 한다.
+    ; 전화를 닫고 바로 다시 한다.
     if (!EarnVinewoodWaitSelected(3000)) {
         if (!EarnPress("Backspace"))
             return false
-        gEarnRetryIn := 3 * 60000
+        gEarnRetryIn := 0
         return EarnFail("금고: 전화 홈에서 Vinewood Club 앱 선택 미확인")
     }
     if (!EarnPress("Enter") || !EarnSleep(700))

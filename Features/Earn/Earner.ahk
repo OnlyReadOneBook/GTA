@@ -14,7 +14,7 @@ global gEarnCurrent := ""       ; 지금 하는 작업 이름
 global gEarnSellNotices := Map() ; 사업장별 판매 알림. 다른 사업장 관측이나 F9 토글로 지우지 않는다.
 global gEarnTasks := []
 global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각(A_TickCount). 없으면 시작 시각 + 간격
-global gEarnSoftFails := Map()   ; 작업별 연속 실패 횟수. 빠른 재시도 뒤 최대 30분으로 간격을 늘린다
+global gEarnSoftFails := Map()   ; 작업별 연속 실패 횟수(로그용). 실패 뒤 간격을 늘리지 않는다
 global gEarnHeld := Map()        ; 거래 결과 불명확 작업 id → 사유. 수동 재활성화 전에는 재실행하지 않는다
 global gEarnFailures := Map()    ; 작업 id → 마지막 실패 사유와 다음 시도 시각(보류는 0)
 global gEarnRecovery := ""        ; 확인된 정리 경로를 다음 tick에서 우선 재시도한다
@@ -225,11 +225,16 @@ SetEarner(on, reason := "", stopMode := "hard", mode := "full", preserveSchedule
         }
         if (config["Features"]["AntiAFK"] && !afkOn)
             SetAntiAFK(true)
+        ; AFK 입력도 EarnTick 이 맡는다. AFK 자체 타이머는 끈다.
+        try SetTimer(%"AntiAFKTick"%, 0)
         SetTimer(EarnTick, 1000)
         ShowTooltip(mode = "apps" ? "💰 유휴 앱 자동 (" KeyLabelFor("Earner") " 두 번: 전체 수익, End: 멈춤)" : "💰 전체 수익 켜짐 (" KeyLabelFor("Earner") " 두 번: MCT 수익 끄기, End: 멈춤)", 2500)
         EarnLog("켜짐: " EarnEnabledText())
     } else {
         SetTimer(EarnTick, 0)
+        ; 수익이 꺼지면 AFK 는 자체 타이머로 돌아간다.
+        if (IsSet(afkOn) && afkOn)
+            try SetTimer(%"AntiAFKTick"%, 5000)
         gEarnInputAbortReason := ""
         ; gEarnBusy는 예약 작업과 AFK 정리가 공유한다. 정리를 소비할 주체가 있는 구간에만
         ; 수동 종료 latch를 세워 종료 처리가 없는 busy 상태에 남지 않게 한다.
@@ -271,7 +276,7 @@ EarnEnabledText() {
 }
 
 EarnTick() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gAbort, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnInputAbortReason, config, afkOn
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gAbort, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnInputAbortReason, config, afkOn, afkNextDue
     if (!gEarnOn || gEarnBusy)
         return
     if (!gEarnGamePID || EarnGamePID() != gEarnGamePID) {
@@ -298,8 +303,12 @@ EarnTick() {
                 task := t
         }
     }
-    if (!IsObject(task))
+    ; 할 작업이 없는 틈에는 AFK 입력을 넣는다. 간격·포커스 복귀·화면 정리 판정은 AntiAFKTick 이 그대로 한다.
+    if (!IsObject(task)) {
+        if (IsSet(afkOn) && afkOn)
+            try %"AntiAFKTick"%()
         return
+    }
     ; 시작 시점에 실행할 차례이거나 EarnMCTBatchAheadSec(기본 120초) 안에 차례가 될 MCT 작업을 묶는다. 진행 중 새로 due가 된 작업은 다음 회차다.
     ; 1005 14:10·14:20 에 DJ 가 묶음을 정한 순간보다 몇 초 늦게 due 가 되어, 창고만 하고 나온 뒤 1분 안에 나이트클럽에 다시 들어갔다.
     mctSession := recovering ? gEarnRecovery.mct : EarnIsMCTTask(task.id)
@@ -382,19 +391,23 @@ EarnTick() {
     }
     ; F9 수동 종료는 새 작업 입력을 즉시 막되, 이미 연 MCT의 확인된 정리와 CEO 해제까지 끝낸 뒤 꺼진다.
     ; 정리 기준점을 다시 잡은 뒤 생긴 End·사용자 입력·포커스 이탈은 gAbort를 다시 켜므로 성공으로 덮지 않는다.
+    ; 끝까지 한 작업의 입력은 방치 킥을 막는 입력이기도 하다. 그 뒤 AFK 입력은 한 간격 뒤로 민다.
+    for result in outcome.results
+        if (result.ok)
+            afkNextDue := A_TickCount + config["Settings"].Get("AFKIntervalSec", 200) * 1000
     if (gEarnUserAbort && gEarnInputAbortReason != "")
         gEarnFail := gEarnInputAbortReason
     if (gEarnManualStop) {
         EarnFinishManualStop(outcome.cleanupOK, gEarnManualCleanupAttempted, mctSession)
         return
     }
-    ; 사용자가 손을 댄 중단은 끄지 않고 3분 뒤 다시 한다. 다음 시도도 손을 뗀 뒤에만 시작하고,
+    ; 사용자가 손을 댄 중단은 끄지 않고 손을 떼면(AFKUserIdleSec) 바로 다시 한다. 따로 기다리는 시간은 두지 않는다(1019 사용자 지시).
     ; MCT 작업은 시작할 때 위치를 다시 확인하므로 정리가 덜 됐어도 여기서 멈추지 않는다.
     ; (1004 18:36 사용자가 잠깐 만져 자동화가 통째로 꺼졌다. 밤새 켜 두는 용도라 매번 F9 를 다시 눌러야 했다)
     if (gEarnUserAbort) {
         gAbort := false
         if (!outcome.cleanupOK || recovering)
-            gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: 0, nextTick: A_TickCount + 3 * 60000}
+            gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: 0, nextTick: A_TickCount}
         finished := Map()
         for result in outcome.results {
             if (result.ok && outcome.cleanupOK && !recovering) {
@@ -414,11 +427,11 @@ EarnTick() {
             }
             if (gEarnNextDue.Has(t.id))
                 gEarnNextDue.Delete(t.id)
-            gEarnDue[t.id] := A_TickCount + 3 * 60000
+            gEarnDue[t.id] := A_TickCount
         }
         abortReason := gEarnInputAbortReason != "" ? gEarnInputAbortReason : "입력 감시 중단 (상세 사유 없음)"
-        EarnLog(task.label ": " abortReason " → 3분 뒤 다시")
-        ShowTooltip("💰 " abortReason " → 3분 뒤 다시", 4000)
+        EarnLog(task.label ": " abortReason " → 손을 떼면 바로 다시")
+        ShowTooltip("💰 " abortReason " → 손을 떼면 바로 다시", 4000)
         return
     }
     if (fatalReason != "") {
@@ -429,9 +442,9 @@ EarnTick() {
     ; DJ 확인창이 남아도 no-screen으로 판독된 1012 방치 추방처럼, 실제 정리 확인 전에는 복구를 유지한다.
     if (!outcome.cleanupOK) {
         attempts := recovering ? gEarnRecovery.attempts + 1 : 1
-        delay := Min(300000, 30000 * 2 ** Min(4, attempts - 1))
+        delay := 0
         gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: attempts, nextTick: A_TickCount + delay}
-        EarnLog("복구 대기: " task.id " 정리 미확인 (" gEarnFail ") → " Round(delay / 1000) "초 뒤 확인된 정리 경로 재시도; 수익 작업 대기")
+        EarnLog("복구 대기: " task.id " 정리 미확인 (" gEarnFail ") → 확인된 정리 경로 바로 재시도; 수익 작업 대기")
         return
     }
     if (recovering) {
@@ -700,12 +713,12 @@ EarnFinishScheduledTask(result) {
     {
         n := gEarnSoftFails.Get(task.id, 0) + 1
         gEarnSoftFails[task.id] := n
-        retryIn := result.retryIn ? result.retryIn : 60000
-        retryIn := Min(30 * 60000, retryIn * 2 ** Min(5, Max(0, n - config["Settings"]["EarnSoftFailMax"])))
+        ; 실패 뒤 기다리지 않고 다음 tick 에 다시 한다(1019 사용자 지시). 작업이 게임 상태 때문에 정한 대기(retryIn)만 따른다.
+        retryIn := result.retryIn
         gEarnDue[task.id] := A_TickCount + retryIn
         gEarnFailures[task.id] := {reason: reason, nextTick: gEarnDue[task.id]}
-        EarnLog("실패: " task.id " (" task.label ") " reason " → " Round(retryIn / 60000) "분 뒤 다시 (연속 " n "회), 나머지 작업 계속")
-        ShowTooltip("💰 " task.label ": " Round(retryIn / 60000) "분 뒤 다시", 4000)
+        EarnLog("실패: " task.id " (" task.label ") " reason " → " (retryIn ? Round(retryIn / 1000) "초 뒤" : "바로") " 다시 (연속 " n "회), 나머지 작업 계속")
+        ShowTooltip("💰 " task.label ": " (retryIn ? Round(retryIn / 1000) "초 뒤" : "바로") " 다시", 4000)
     }
     return false
 }
@@ -766,7 +779,7 @@ EarnInputAllowed() {
         if (!physicalInput && activeHwnd)
             return true
         ; 긴 OCR 호출 중 발생한 입력도 시작 이후 경과 시간과 비교해 감지한다.
-        ; 끄지 않는다. EarnTick 이 3분 뒤로 미룬다.
+        ; 끄지 않는다. EarnTick 이 손을 뗀 뒤 바로 다시 한다.
         gAbort := true
         gEarnUserAbort := true
         gEarnRetryIn := 0
@@ -873,7 +886,7 @@ EarnOtherMacroBusy() {
 EarnStatusText() {
     global gEarnOn, gEarnMode
     text := EarnStatusDetail()
-    return gEarnOn && gEarnMode = "apps" ? "유휴 앱 자동 · " text : text
+    return !gEarnOn || text = "" ? text : (gEarnMode = "apps" ? "바인우드 · " : "MCT + 바인우드 · ") text
 }
 
 EarnStatusDetail() {
