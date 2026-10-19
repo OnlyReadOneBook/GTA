@@ -383,6 +383,34 @@ function Set-ModeCpuPolicy([bool]$Enabled) {
     if ($LASTEXITCODE -ne 0) { throw 'Could not activate CPU policy.' }
 }
 
+# iCloud sync competed with the game for CPU and disk (1019 measurement), so it
+# is suspended while the game runs and resumed when it exits. Suspension keeps
+# its state; relaunching the packaged app would open its window instead.
+function Set-CloudSyncPaused([bool]$Paused) {
+    if (-not ('GtaProcessPause' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class GtaProcessPause {
+    [DllImport("ntdll.dll")] public static extern int NtSuspendProcess(IntPtr handle);
+    [DllImport("ntdll.dll")] public static extern int NtResumeProcess(IntPtr handle);
+}
+'@
+    }
+    foreach ($process in @(Get-Process -Name 'iCloud*' -ErrorAction SilentlyContinue)) {
+        try {
+            if ($Paused) { $null = [GtaProcessPause]::NtSuspendProcess($process.Handle) }
+            else { $null = [GtaProcessPause]::NtResumeProcess($process.Handle) }
+        } catch { }
+    }
+}
+
+function Sync-CloudSync([bool]$Running) {
+    if ($script:CloudPaused -eq $Running) { return }
+    Set-CloudSyncPaused $Running
+    $script:CloudPaused = $Running
+    Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) icloud $(if ($Running) { 'paused' } else { 'resumed' })"
+}
+
 # Preserve the existing performance CSV contract consumed by frame-watch.
 function Initialize-FrameFeed {
     if ('GtaFrameFeed' -as [type]) { return }
@@ -479,6 +507,9 @@ $script:Config = Join-Path $env:APPDATA 'GHelper\config.json'
 $script:AwaySignalPath = Join-Path $env:USERPROFILE '.gta-away-want'
 $script:FpsWantPath = Join-Path $env:USERPROFILE '.gta-fps-want'
 $script:CpuPolicyKey = ''
+# Unknown at start: the first tick applies either state, so a watcher that died
+# mid-game resumes iCloud on its next run.
+$script:CloudPaused = $null
 $script:Log = Join-Path $env:LOCALAPPDATA 'gta-turbo.log'
 $script:PerfDir = Join-Path $env:LOCALAPPDATA 'gta-perf'
 $script:PresentMon = Join-Path $env:USERPROFILE 'scripts\tools\PresentMon.exe'
@@ -496,6 +527,7 @@ try {
         $running = [bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue)
         Invoke-ModeCheck $running
         try { $null = Get-FrameFeed $running } catch { }
+        try { Sync-CloudSync $running } catch { }
         # A control failure must not stop telemetry, and a measurement failure must not stop control.
         if ($running -and (Get-Date) -ge $nextPerf) {
             $nextPerf = (Get-Date).AddSeconds(10)
@@ -511,6 +543,7 @@ try {
     }
 } finally {
     if ($script:FrameFeed) { $script:FrameFeed.Stop() }
+    if ($owned) { try { Set-CloudSyncPaused $false } catch { } }
     if ($owned) { $singleton.ReleaseMutex() }
     $singleton.Dispose()
 }
