@@ -187,17 +187,18 @@ MacroStatusText(compact) {
 
 ; 수익 중 / 수익 대기 N초(사용자 입력 뒤 안정 대기) / 수익 오류: 까닭 / 수익 중단
 EarnOverlayText() {
-    global gEarnOn, gEarnFail, gEarnCurrent, gEarnMode, config
+    global gEarnOn, gEarnFail, gEarnCurrent, config
     if (!IsSet(gEarnOn) || !gEarnOn)
         return IsSet(gEarnFail) && gEarnFail != "" ? "수익 오류: " gEarnFail : "수익 중단"
-    ; 평소(유휴 앱)는 바인우드만, F9 로 MCT 작업을 켜면 둘 다 돈다(1019 사용자 지시). 대기 중에도 어느 쪽인지 보인다.
-    scope := IsSet(gEarnMode) && gEarnMode = "apps" ? "바인우드" : "MCT + 바인우드"
+    ; 무엇이 도는지는 켜진 작업 목록에서 만든다(1019 사용자 지시). 대기 중에도 보인다.
+    scope := EarnScopeLabel()
+    scope := scope = "" ? "" : scope " "
     if (gEarnCurrent = "") {
         idleLeft := config["Settings"]["EarnUserIdleSec"] * 1000 - A_TimeIdlePhysical
         if (idleLeft > 0)
-            return scope " 수익 대기 " Ceil(idleLeft / 1000) "초"
+            return scope "수익 대기 " Ceil(idleLeft / 1000) "초"
     }
-    return scope " 수익 중"
+    return scope "수익 중"
 }
 
 AFKStatusText() {

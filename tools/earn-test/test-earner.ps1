@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnHoldsPending', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
+$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnScopeLabel', 'EarnHoldsPending', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -349,21 +349,21 @@ Check(gEarnOn && !gAbort && idleMs > 2000 && gEarnDone["bunker"] = 0 && lockRele
     "input during blocked work aborts even when newer idle exceeds start wait")
 Reset()
 idleMs := 0
-Check(EarnStatusText() = "MCT + 바인우드 · 수익: 입력 안정 대기 2초", "overlay shows two-second input countdown")
+Check(EarnStatusText() = "MCT · 수익: 입력 안정 대기 2초", "overlay shows two-second input countdown")
 idleMs := 1999
-Check(EarnStatusText() = "MCT + 바인우드 · 수익: 입력 안정 대기 1초", "overlay keeps countdown before boundary")
+Check(EarnStatusText() = "MCT · 수익: 입력 안정 대기 1초", "overlay keeps countdown before boundary")
 idleMs := 2000
-Check(EarnStatusText() = "MCT + 바인우드 · 수익: bunker 시작 대기", "overlay clears input countdown at boundary")
+Check(EarnStatusText() = "MCT · 수익: bunker 시작 대기", "overlay clears input countdown at boundary")
 focused := false
-Check(EarnStatusText() = "MCT + 바인우드 · 수익: GTA 포커스 대기", "overlay explains focus wait")
+Check(EarnStatusText() = "MCT · 수익: GTA 포커스 대기", "overlay explains focus wait")
 focused := true, otherBusy := true
-Check(EarnStatusText() = "MCT + 바인우드 · 수익: 다른 매크로 종료 대기", "overlay explains busy macro wait")
+Check(EarnStatusText() = "MCT · 수익: 다른 매크로 종료 대기", "overlay explains busy macro wait")
 otherBusy := false
 for id in ["bunker", "dj"]
     gEarnDue[id] := A_TickCount + 5000
-Check(EarnStatusText() = "MCT + 바인우드 · 수익: 다음 bunker 0:05 뒤", "overlay preserves future due countdown")
+Check(EarnStatusText() = "MCT · 수익: 다음 bunker 0:05 뒤", "overlay preserves future due countdown")
 gEarnCurrent := "bunker", idleMs := 0, focused := false
-Check(EarnStatusText() = "MCT + 바인우드 · 수익: bunker 진행 중", "running task status precedes startup wait")
+Check(EarnStatusText() = "MCT · 수익: bunker 진행 중", "running task status precedes startup wait")
 Reset()
 otherBusy := true
 EarnTick()
@@ -878,6 +878,17 @@ Check(gEarnOn && gEarnMode = "apps" && stopped = 0 && !gEarnManualStop && gEarnD
     "F9 off only drops MCT tasks and keeps Vinewood apps running without a stop")
 Check(endCount = 0 && bossOffCount = 0, "F9 off never runs MCT cleanup or CEO release")
 Check(InStr(EarnStatusText(), "바인우드 · ") = 1, "idle status is explicit")
+savedTasks := gEarnTasks, savedHeld := gEarnHeld, savedMode := gEarnMode
+gEarnTasks := [{id:"bunker",on:true}, {id:"safe",on:true}, {id:"staff",on:false}, {id:"dispatch",on:true}], gEarnHeld := Map()
+gEarnMode := "full"
+Check(EarnScopeLabel() = "MCT + 바인우드 + 현장 파견", "scope label lists every enabled task group")
+gEarnMode := "apps"
+Check(EarnScopeLabel() = "바인우드", "apps mode scope drops MCT and dispatch")
+gEarnTasks[2].on := false
+Check(EarnScopeLabel() = "", "no enabled Vinewood task leaves the scope empty")
+gEarnMode := "full", gEarnTasks[2].on := true, gEarnHeld := Map("bunker", "pending")
+Check(EarnScopeLabel() = "바인우드 + 현장 파견", "held tasks are not shown as running")
+gEarnTasks := savedTasks, gEarnHeld := savedHeld, gEarnMode := savedMode
 mctOpen := true
 Check(EarnAFKCloseMCT(300) = "" && endCount = 0, "idle apps never invoke AFK MCT cleanup")
 SetEarner(false, "전체 멈춤")
@@ -1433,7 +1444,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 220 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 224 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
