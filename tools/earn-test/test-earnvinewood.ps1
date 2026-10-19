@@ -311,14 +311,14 @@ RunTests() {
     Reset("normal", "phone_vinewood")
     Check(EarnVinewoodClose() && gState = "standing", "phone home is closed before reporting success")
     Reset("normal", "pause_menu")
-    RetryIn(0)
-    Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 180000 && InStr(gFailure, "HUD"),
-        "away from MCT retries in three minutes without input")
+    RetryIn(999)
+    Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 0 && InStr(gFailure, "HUD"),
+        "away from MCT retries immediately without input")
     for idle in [[1000, 600000, "physical"], [600000, 1000, "remote"]] {
         Reset("normal", "hud")
-        RetryIn(0)
+        RetryIn(999)
         gPhysIdle := idle[1], gOthersIdle := idle[2]
-        Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 180000,
+        Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 0,
             "free HUD waits while recent " idle[3] " input exists")
         Check(!EarnVinewoodOpen(false) && gKeys.Length = 0, "staff preserves " idle[3] " input guard")
     }
@@ -381,9 +381,9 @@ RunTests() {
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 2
         && gKeys[1] = "Right" && gKeys[2] = "Enter", "Job List home only moves right and opens the selected app")
     Reset("right_stuck", "phone_job")
-    RetryIn(0)
-    Check(!EarnVinewoodOpen() && gState = "standing" && gKeys.Length = 2 && gKeys[2] = "Backspace" && RetryIn() = 180000,
-        "unconfirmed Vinewood selection closes the phone and retries in three minutes")
+    RetryIn(999)
+    Check(!EarnVinewoodOpen() && gState = "standing" && gKeys.Length = 2 && gKeys[2] = "Backspace" && RetryIn() = 0,
+        "unconfirmed Vinewood selection closes the phone and retries immediately")
     Reset("normal", "phone_vinewood")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 1
         && gKeys[1] = "Enter", "selected Vinewood home opens directly without changing phone selection")

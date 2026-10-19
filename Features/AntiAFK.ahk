@@ -28,7 +28,7 @@ ToggleAntiAFK(*) {
 }
 
 SetAntiAFK(on) {
-    global afkOn, afkNextDue, afkHookTick
+    global afkOn, afkNextDue, afkHookTick, gEarnOn
     afkOn := on
     afkNextDue := 0
     if (on) {
@@ -37,7 +37,8 @@ SetAntiAFK(on) {
         if (!afkHookTick)
             afkHookTick := A_TickCount
     }
-    SetTimer(AntiAFKTick, on ? 5000 : 0)
+    ; 수익 자동화가 켜져 있으면 EarnTick 이 할 작업이 없는 틈에 AntiAFKTick 을 부른다(한 플로우, 1019 사용자 지시). 따로 도는 타이머는 수익이 꺼졌을 때만 쓴다.
+    SetTimer(AntiAFKTick, on && !(IsSet(gEarnOn) && gEarnOn) ? 5000 : 0)
     key := KeyLabelFor("AntiAFK")
     ShowTooltip(on ? "🟢 AFK 방지 켜짐 (" key ": 끄기)" : "⚪ AFK 방지 꺼짐 (" key ": 켜기)", 2000)
     AFKLog(on ? "on" : "off")
