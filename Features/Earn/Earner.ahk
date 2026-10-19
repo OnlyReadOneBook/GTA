@@ -116,7 +116,7 @@ EarnIdleInit() {
 
 ; 모드 전환은 진행 중 거래와 정리가 끝난 경계에서만 적용한다.
 EarnModeTick() {
-    global gEarnModeRequest, gEarnMode, gEarnOn, gEarnBusy, gEarnManualStop, gEarnRecovery, gEarnIdleEnabled
+    global gEarnModeRequest, gEarnMode, gEarnOn, gEarnBusy, gEarnManualStop, gEarnRecovery, gEarnIdleEnabled, gEarnMCTSeenTick
     ; 요청 소비와 활성화를 한 경계로 묶는다. End는 해제 직후 새 상태를 중단한다.
     Critical "On"
     try {
@@ -125,6 +125,9 @@ EarnModeTick() {
             return
         requested := gEarnModeRequest
         gEarnModeRequest := ""
+        ; F9 전체 수익은 MCT 곁에서 켠다. 켠 뒤 손대지 않았으면 시선만 돌아간 MCT 를 제자리 회전으로 찾는다(EarnMCTTurnInPlace).
+        if (requested != "apps")
+            gEarnMCTSeenTick := A_TickCount
         if (gEarnOn) {
             gEarnMode := requested
             EarnLog("모드 전환: " (requested = "apps" ? "유휴 앱 자동" : "F9 전체 수익"))

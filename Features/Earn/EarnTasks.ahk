@@ -488,18 +488,50 @@ EarnDJTask(manageSession := true) {
     return ok && ended
 }
 
+EarnMCTSpotSeen() {
+    return EarnAtMCT() || EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")
+}
+
+; 1020 01:13~06:40 녹화: 테러바이트 MCT 곁에 선 채 시선만 MCT 반대쪽으로 돌아가 접근 안내가 안 떠서 95회 연속 실패했다.
+; #270(야외에서 카메라를 돌림) 때문에 회전은 마지막으로 MCT를 확인한 뒤 물리 입력이 없었을 때만 한다.
+; 그 사이 사람이 움직이지 않았으니 자리는 MCT 곁 그대로다. 걷지 않고 카메라 모드도 바꾸지 않는다.
+EarnMCTTurnInPlace() {
+    global gEarnMCTSeenTick, config
+    if (!IsSet(gEarnMCTSeenTick) || !gEarnMCTSeenTick || AFKPhysicalIdleMs() < A_TickCount - gEarnMCTSeenTick)
+        return false
+    step := Round(45 * config["Settings"]["EarnTurnUnitsPerDeg"])
+    Loop 8 {
+        if (!EarnTurn(step))
+            return false
+        if (EarnMCTSpotSeen() || EarnWaitSeen("mct_terrorbyte", "", 800)) {
+            EarnLog("MCT: 시선이 돌아가 있어 제자리 회전으로 접근 안내를 찾음 (" A_Index * 45 "도)")
+            return true
+        }
+    }
+    EarnLog("MCT: 제자리 한 바퀴를 돌아도 접근 안내 없음")
+    return false
+}
+
 EarnTaskMCTBegin() {
-    global gEarnMCTCleanupOK, gEarnManualStop
+    global gEarnMCTCleanupOK, gEarnManualStop, gEarnMCTSeenTick
     gEarnMCTCleanupOK := true
     probePassed := false, opened := false
     try {
         ; 알림에 가려진 안내는 잠깐 기다린다. 위치를 확인하기 전에는 입력으로 탐색하지 않는다(#270).
         spotDeadline := A_TickCount + 5000
-        while (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte")) {
-            if (A_TickCount >= spotDeadline || !EarnSleep(500))
-                return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 3)
+        while (!EarnMCTSpotSeen()) {
+            if (EarnAborted())
+                return false
+            if (A_TickCount >= spotDeadline) {
+                if (!EarnMCTTurnInPlace())
+                    return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 0.5)
+                break
+            }
+            if (!EarnSleep(500))
+                return false
         }
         probePassed := true
+        gEarnMCTSeenTick := A_TickCount
         opened := EarnMCTOpen() && EarnMCTRefresh()
         return opened
     } finally {
