@@ -384,21 +384,73 @@ function Set-ModeCpuPolicy([bool]$Enabled) {
 }
 
 # Preserve the existing performance CSV contract consumed by frame-watch.
+function Initialize-FrameFeed {
+    if ('GtaFrameFeed' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System; using System.Collections.Generic; using System.Diagnostics; using System.Globalization;
+public sealed class GtaFrameFeed {
+    readonly object gate = new object();
+    readonly Queue<KeyValuePair<long, double>> frames = new Queue<KeyValuePair<long, double>>();
+    readonly Process process;
+    int column = -1;
+    public GtaFrameFeed(string exe, string args) {
+        var info = new ProcessStartInfo(exe, args);
+        info.UseShellExecute = false; info.CreateNoWindow = true;
+        info.RedirectStandardOutput = true; info.RedirectStandardError = true;
+        process = Process.Start(info);
+        process.ErrorDataReceived += delegate { };
+        process.BeginErrorReadLine();
+        var reader = new System.Threading.Thread(Read);
+        reader.IsBackground = true; reader.Start();
+    }
+    public bool Alive { get { try { return !process.HasExited; } catch { return false; } } }
+    void Read() {
+        string line;
+        while ((line = process.StandardOutput.ReadLine()) != null) {
+            var cells = line.Split(',');
+            if (column < 0) { column = Array.IndexOf(cells, "MsBetweenDisplayChange"); continue; }
+            double ms;
+            if (column >= cells.Length || !double.TryParse(cells[column], NumberStyles.Float, CultureInfo.InvariantCulture, out ms) || ms <= 0) { continue; }
+            long now = Stopwatch.GetTimestamp();
+            lock (gate) {
+                frames.Enqueue(new KeyValuePair<long, double>(now, ms));
+                while (frames.Count > 0 && now - frames.Peek().Key > Stopwatch.Frequency * 10) { frames.Dequeue(); }
+            }
+        }
+    }
+    public double[] Recent(double seconds) {
+        long cutoff = Stopwatch.GetTimestamp() - (long)(Stopwatch.Frequency * seconds);
+        var result = new List<double>();
+        lock (gate) { foreach (var frame in frames) { if (frame.Key >= cutoff) { result.Add(frame.Value); } } }
+        return result.ToArray();
+    }
+    public void Stop() { try { if (!process.HasExited) { process.Kill(); } } catch { } }
+}
+'@
+}
+
+# One long-lived ETW session. Starting a PresentMon session per sample made the
+# game hitch for 60-290 ms every telemetry interval (1019 measurement).
+function Get-FrameFeed([bool]$Running) {
+    if (-not $Running) {
+        if ($script:FrameFeed) { $script:FrameFeed.Stop(); $script:FrameFeed = $null }
+        return $null
+    }
+    if ($script:FrameFeed -and $script:FrameFeed.Alive) { return $script:FrameFeed }
+    if (-not (Test-Path -LiteralPath $script:PresentMon)) { return $null }
+    Initialize-FrameFeed
+    $script:FrameFeed = [GtaFrameFeed]::new($script:PresentMon,
+        "--process_name `"$($script:Game).exe`" --output_stdout --no_console_stats --stop_existing_session --session_name gta_perf")
+    return $script:FrameFeed
+}
+
 function Get-Fps {
-    if (-not (Test-Path -LiteralPath $script:PresentMon)) { return ',' }
-    if (Test-Path -LiteralPath $script:PmOut) { Remove-Item -LiteralPath $script:PmOut }
-    # Windows PowerShell turns native stderr warnings into ErrorRecords even when
-    # redirected. A non-fatal elevation warning must not abort the capture.
-    $previousPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        & $script:PresentMon --process_name "$($script:Game).exe" --output_file $script:PmOut --timed 2 --terminate_after_timed `
-            --no_console_stats --stop_existing_session --session_name gta_perf 2>$null | Out-Null
-    } finally { $ErrorActionPreference = $previousPreference }
-    try {
-        $ms = @(Import-Csv -LiteralPath $script:PmOut | Where-Object { $_.MsBetweenDisplayChange -ne 'NA' } |
-            ForEach-Object { [double]$_.MsBetweenDisplayChange } | Where-Object { $_ -gt 0 })
-    } catch { return ',' }
+    $feed = Get-FrameFeed $true
+    if (-not $feed) { return ',' }
+    return Format-Fps @($feed.Recent(2))
+}
+
+function Format-Fps([double[]]$ms) {
     if ($ms.Count -lt 10) { return ',' }
     $avg = 1000 / ($ms | Measure-Object -Average).Average
     $worst = $ms | Sort-Object -Descending | Select-Object -First ([math]::Max(1, [math]::Floor($ms.Count * 0.01)))
@@ -430,7 +482,6 @@ $script:CpuPolicyKey = ''
 $script:Log = Join-Path $env:LOCALAPPDATA 'gta-turbo.log'
 $script:PerfDir = Join-Path $env:LOCALAPPDATA 'gta-perf'
 $script:PresentMon = Join-Path $env:USERPROFILE 'scripts\tools\PresentMon.exe'
-$script:PmOut = Join-Path $env:TEMP 'gta-perf-pm.csv'
 $script:Smi = 'utilization.gpu,temperature.gpu,power.draw,clocks.gr,memory.used,memory.total,clocks_throttle_reasons.active'
 $script:Header = 'time,fps_avg,fps_1pct_low,gpu_util_pct,gpu_temp_c,gpu_power_w,gpu_clock_mhz,vram_used_mb,vram_total_mb,throttle_reasons,cpu_util_pct,mode'
 $singleton = [Threading.Mutex]::new($false, 'Local\GtaPerformanceWatch')
@@ -444,6 +495,7 @@ try {
     while ($true) {
         $running = [bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue)
         Invoke-ModeCheck $running
+        try { $null = Get-FrameFeed $running } catch { }
         # A control failure must not stop telemetry, and a measurement failure must not stop control.
         if ($running -and (Get-Date) -ge $nextPerf) {
             $nextPerf = (Get-Date).AddSeconds(10)
@@ -458,6 +510,7 @@ try {
         Start-Sleep -Seconds 1
     }
 } finally {
+    if ($script:FrameFeed) { $script:FrameFeed.Stop() }
     if ($owned) { $singleton.ReleaseMutex() }
     $singleton.Dispose()
 }
