@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
+$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnHoldsPending', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -304,7 +304,11 @@ Check(!EarnTransactionBegin("staff", "sent"), "state persistence failure prevent
 Reset()
 state["pending_staff"] := "unconfirmed before restart"
 SetEarner(true)
-Check(gEarnHeld.Has("staff") && state["pending_staff"] != "", "manual enable preserves unconfirmed transaction across restarts")
+Check(!gEarnHeld.Has("staff") && state["pending_staff"] = "", "staff dispatch never stays held across restarts")
+Reset()
+state["pending_bunker"] := "unconfirmed before restart"
+SetEarner(true)
+Check(gEarnHeld.Has("bunker") && state["pending_bunker"] != "", "manual enable preserves unconfirmed purchase across restarts")
 Reset()
 gEarnOn := false
 EarnTick()
@@ -483,7 +487,7 @@ EarnTick()
 Check(calls.Length = 7 && gEarnDone["bunker"] = 2 && gEarnDone["warehouse"] = 2 && gEarnDone["dj"] = 2
     && endCount = 2 && bossOffCount = 2 && gEarnOn && stopped = 0 && tooltips.Length = 1,
     "future due ticks continue full-stock checks and following tasks without repeating the same notice")
-ToggleEarner()
+SetEarner(false, "", "manual")
 EarnTick()
 Check(!gEarnOn && calls.Length = 7 && stopped = 1 && !gEarnManualStop,
     "manual F9 still stops automation after stock-full detection and later ticks do not restart it")
@@ -868,9 +872,11 @@ safeDue := gEarnDue["safe"]
 gEarnHeld["staff"] := "pending"
 ToggleEarner()
 Check(gEarnMode = "full" && gEarnDue["safe"] = safeDue && gEarnHeld.Has("staff"), "F9 full preserves due and holds")
+stopped := 0
 ToggleEarner()
-EarnModeTick()
-Check(gEarnOn && gEarnMode = "apps" && gEarnDue["safe"] = safeDue && gEarnHeld.Has("staff"), "F9 off returns to apps preserving schedules")
+Check(gEarnOn && gEarnMode = "apps" && stopped = 0 && !gEarnManualStop && gEarnDue["safe"] = safeDue && gEarnHeld.Has("staff"),
+    "F9 off only drops MCT tasks and keeps Vinewood apps running without a stop")
+Check(endCount = 0 && bossOffCount = 0, "F9 off never runs MCT cleanup or CEO release")
 Check(InStr(EarnStatusText(), "유휴 앱 자동"), "idle status is explicit")
 mctOpen := true
 Check(EarnAFKCloseMCT(300) = "" && endCount = 0, "idle apps never invoke AFK MCT cleanup")
@@ -916,11 +922,24 @@ SetEarner(false, "전체 멈춤")
 EarnModeTick()
 Check(modeTimer = 0 && !gEarnOn, "End before startup removes pending initialization")
 Reset()
-gEarnIdleEnabled := true
+gEarnIdleEnabled := true, gEarnBusy := true
+ToggleEarner()
+Check(gEarnOn && gEarnMode = "full" && gEarnModeRequest = "apps" && !gAbort, "F9 off during an MCT batch waits for its boundary")
+gEarnBusy := false
+EarnModeTick()
+Check(gEarnOn && gEarnMode = "apps", "F9 off applies apps mode after the batch")
+Reset()
+gEarnIdleEnabled := true, gEarnBusy := true
+ToggleEarner()
+ToggleEarner()
+gEarnBusy := false
+EarnModeTick()
+Check(gEarnOn && gEarnMode = "full" && gEarnModeRequest = "", "second F9 before the boundary cancels the pending off")
+Reset()
+gEarnIdleEnabled := false
 gEarnRecovery := {task:{id:"bunker",label:"bunker"},mct:true,nextTick:fakeTick+30000}
 ToggleEarner()
-EarnModeTick()
-Check(!gEarnOn && !gEarnIdleEnabled && modeTimer = 0 && IsObject(gEarnRecovery) && InStr(gEarnFail,"정리 복구"), "F9 during delayed MCT recovery stops explicitly and retains evidence")
+Check(gEarnOn && gEarnIdleEnabled && IsObject(gEarnRecovery) && gEarnModeRequest = "apps", "F9 off during MCT recovery keeps recovery and Vinewood apps")
 for appId in ["safe", "staff"] {
     for explicitOffset in [-1000, 49*60000] {
         Reset()
@@ -944,7 +963,10 @@ for appId in ["safe", "staff"] {
     fixedTask := {id:appId,label:appId,every:300000}
     state["pending_" appId] := "unconfirmed request"
     EarnFinishScheduledTask({task:fixedTask,startTick:fakeTick-1000,ok:false,reason:"pending",retryIn:90000})
-    Check(gEarnHeld.Has(appId) && gEarnFailures[appId].nextTick = 0, "pending app remains held without repeat scheduling: " appId)
+    if (appId = "staff")
+        Check(!gEarnHeld.Has(appId) && gEarnDue[appId] = fakeTick+90000, "pending staff dispatch retries instead of holding")
+    else
+        Check(gEarnHeld.Has(appId) && gEarnFailures[appId].nextTick = 0, "pending app remains held without repeat scheduling: " appId)
 }
 FileAppend("PASS Earner: " checkCount " cases; no game input`n", "*")
 if (hudDepth != 0 || hudTakes != 0 || hudReturns != 0)
@@ -1034,7 +1056,7 @@ RunTask(id, manageSession := true) {
     duration := taskDurations.Get(id,0)
     fakeTick += duration, idleMs += duration
     if (taskMode = "manual-stop-app") {
-        ToggleEarner()
+        SetEarner(false, "", "manual")
         return EarnFail("화면 판독 중단 또는 시간 초과")
     }
     if (taskMode = "stock-full") {
@@ -1220,7 +1242,7 @@ EarnBossOffIfOn(requireConfirmed := false) {
             bossStopInjected := true
             bossInitialGuardTick := gEarnGuardStartedTick
             fakeTick += 10, idleMs := 0
-            ToggleEarner()
+            SetEarner(false, "", "manual")
             return false
         }
         bossRetryBaselineOK := gEarnGuardStartedTick = fakeTick - idleMs
@@ -1249,7 +1271,7 @@ EarnAtMCT() {
     if (mode = "begin-initial-manual" && !beginStopInjected) {
         beginStopInjected := true
         idleMs := 0
-        ToggleEarner()
+        SetEarner(false, "", "manual")
         return false
     }
     return mctOpen
@@ -1297,7 +1319,7 @@ EarnTaskMCTEnd() {
     if (endStopMode != "" && endCount = 1) {
         if (endStopMode = "afk-manual") {
             idleMs := 0
-            ToggleEarner()
+            SetEarner(false, "", "manual")
             stopStatus := EarnStatusText()
             fakeTick++
             EarnInputWatch()
@@ -1305,7 +1327,7 @@ EarnTaskMCTEnd() {
                 return false
         } else if (endStopMode = "manual" || endStopMode = "manual-user") {
             idleMs := 0
-            ToggleEarner()
+            SetEarner(false, "", "manual")
             stopStatus := EarnStatusText()
             ToggleEarner()
             SetEarner(true)
