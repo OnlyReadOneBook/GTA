@@ -493,11 +493,11 @@ EarnMCTSpotSeen() {
 }
 
 ; 1020 01:13~06:40 녹화: 테러바이트 MCT 곁에 선 채 시선만 MCT 반대쪽으로 돌아가 접근 안내가 안 떠서 95회 연속 실패했다.
-; #270(야외에서 카메라를 돌림) 때문에 회전은 마지막으로 MCT를 확인한 뒤 물리 입력이 없었을 때만 한다.
-; 그 사이 사람이 움직이지 않았으니 자리는 MCT 곁 그대로다. 걷지 않고 카메라 모드도 바꾸지 않는다.
+; F9 전체 수익은 MCT 곁에서만 켜므로(1020 사용자) 그 뒤나 MCT를 확인한 뒤면 사람이 손댔어도 돈다.
+; 걷지 않고 카메라 모드도 바꾸지 않는다.
 EarnMCTTurnInPlace() {
     global gEarnMCTSeenTick, config
-    if (!IsSet(gEarnMCTSeenTick) || !gEarnMCTSeenTick || AFKPhysicalIdleMs() < A_TickCount - gEarnMCTSeenTick)
+    if (!IsSet(gEarnMCTSeenTick) || !gEarnMCTSeenTick)
         return false
     step := Round(45 * config["Settings"]["EarnTurnUnitsPerDeg"])
     Loop 8 {
