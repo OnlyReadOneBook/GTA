@@ -469,6 +469,27 @@ EarnIsMCTTask(id) {
     return id = "bunker" || id = "dj" || id = "warehouse"
 }
 
+; 지금 실제로 돌 작업(켜짐 · 모드 허용 · 보류 아님)으로 묶음 이름을 만든다. 예: "MCT + 바인우드". 없으면 빈 문자열.
+EarnScopeLabel() {
+    global gEarnTasks, gEarnHeld
+    mct := false, vinewood := false, dispatch := false
+    for t in gEarnTasks {
+        if (!t.on || !EarnTaskAllowed(t.id) || gEarnHeld.Has(t.id))
+            continue
+        if (EarnIsMCTTask(t.id))
+            mct := true
+        else if (t.id = "safe" || t.id = "staff")
+            vinewood := true
+        else
+            dispatch := true
+    }
+    label := ""
+    for part in [mct ? "MCT" : "", vinewood ? "바인우드" : "", dispatch ? "현장 파견" : ""]
+        if (part != "")
+            label .= (label = "" ? "" : " + ") part
+    return label
+}
+
 ; 각 본문은 자기 예약을 유지한다. 완료 횟수·최종 로그는 공동 MCT 정리가 끝난 뒤 확정한다.
 EarnRunScheduledTask(task, mctSession := false) {
     global gEarnCurrent, gEarnFail, gEarnRetryIn, gEarnMode
@@ -886,7 +907,8 @@ EarnOtherMacroBusy() {
 EarnStatusText() {
     global gEarnOn, gEarnMode
     text := EarnStatusDetail()
-    return !gEarnOn || text = "" ? text : (gEarnMode = "apps" ? "바인우드 · " : "MCT + 바인우드 · ") text
+    scope := gEarnOn ? EarnScopeLabel() : ""
+    return text = "" || scope = "" ? text : scope " · " text
 }
 
 EarnStatusDetail() {

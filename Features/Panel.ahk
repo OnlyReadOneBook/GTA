@@ -199,7 +199,7 @@ PanelSetOverlay(ctl, *) {
 
 ; AFK 값은 5~600초만 받는다 (ms 로 잘못 적는 실수나 너무 긴 간격으로 idle 킥을 맞는 일을 막는다).
 PanelSaveAFK(*) {
-    global gPanelCtl, afkNextDue
+    global gPanelCtl, afkNextDue, config
     idle := Trim(gPanelCtl["idle"].Value)
     interval := Trim(gPanelCtl["interval"].Value)
     if (!IsInteger(idle) || Integer(idle) < 5 || Integer(idle) > 600) {
@@ -213,6 +213,8 @@ PanelSaveAFK(*) {
     idle := Integer(idle), interval := Integer(interval)
     if (!PanelSave("AFKUserIdleSec", idle) || !PanelSave("AFKIntervalSec", interval))
         return
+    ; 수익 자동화도 같은 유휴 기준을 쓴다(ConfigLoader 와 같게)
+    config["Settings"]["EarnUserIdleSec"] := idle
     ; 이미 잡힌 다음 입력이 새 간격보다 멀면 새 간격으로 당긴다
     if (afkNextDue && afkNextDue - A_TickCount > interval * 1000)
         afkNextDue := A_TickCount + interval * 1000

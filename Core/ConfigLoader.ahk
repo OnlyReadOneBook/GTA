@@ -22,7 +22,7 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "CayoCooldownMinutes", 48, "VellumDrivingCtrlInterval", 3000,
     "ClawForwardMs", 5000, "ClawRightMs", 5000, "ClawEnterTimeout", 15000, "ClawResultTimeout", 30000,
     "SessionMenuDelay", 600,
-    "AFKUserIdleSec", 45, "CpuBoostIdleSec", 300, "IdleFpsLimit", 30, "AwayMode", 0, "AutoAwayIdleSec", 0, "AFKIntervalSec", 200, "AFKJitterSec", 20, "AFKTapMs", 150, "AFKGapMs", 250, "AFKOnStart", 1,
+    "AFKUserIdleSec", 120, "CpuBoostIdleSec", 300, "IdleFpsLimit", 30, "AwayMode", 0, "AutoAwayIdleSec", 0, "AFKIntervalSec", 200, "AFKJitterSec", 20, "AFKTapMs", 150, "AFKGapMs", 250, "AFKOnStart", 1,
     "AFKRefocusIdleSec", 300, "AFKRefocusSettleMs", 800, "AFKMCTCloseIdleSec", 300, "MemWarnPct", 80, "MemClosePct", 92, "MemCloseMinGB", 25,
     "OverlayEnabled", 1, "OverlayXPct", 98, "OverlayYPct", 18,
     "DiscordHUDAppID", "",
