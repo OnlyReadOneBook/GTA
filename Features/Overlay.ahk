@@ -190,13 +190,14 @@ EarnOverlayText() {
     global gEarnOn, gEarnFail, gEarnCurrent, gEarnMode, config
     if (!IsSet(gEarnOn) || !gEarnOn)
         return IsSet(gEarnFail) && gEarnFail != "" ? "수익 오류: " gEarnFail : "수익 중단"
+    ; 평소(유휴 앱)는 바인우드만, F9 로 MCT 작업을 켜면 둘 다 돈다(1019 사용자 지시). 대기 중에도 어느 쪽인지 보인다.
+    scope := IsSet(gEarnMode) && gEarnMode = "apps" ? "바인우드" : "MCT + 바인우드"
     if (gEarnCurrent = "") {
         idleLeft := config["Settings"]["EarnUserIdleSec"] * 1000 - A_TimeIdlePhysical
         if (idleLeft > 0)
-            return "수익 대기 " Ceil(idleLeft / 1000) "초"
+            return scope " 수익 대기 " Ceil(idleLeft / 1000) "초"
     }
-    ; 평소(유휴 앱)는 바인우드만, F9 로 MCT 작업을 켜면 둘 다 돈다(1019 사용자 지시).
-    return IsSet(gEarnMode) && gEarnMode = "apps" ? "바인우드 수익 중" : "MCT + 바인우드 수익 중"
+    return scope " 수익 중"
 }
 
 AFKStatusText() {
