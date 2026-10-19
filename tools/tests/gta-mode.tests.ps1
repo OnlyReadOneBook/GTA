@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # No game input, foreground changes, real config, powercfg or G-Helper calls.
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -318,18 +318,12 @@ try {
     $script:powerFailure = $true
     Throws { Set-ModeCpuPolicy $true } 'power failure is not marked applied'
 
-    # Exercise real capture/parsing with a fixture, never the installed PresentMon.
-    $script:Game = 'FixtureGTA'
-    $script:PresentMon = Join-Path $fixture 'presentmon-fixture.ps1'
-    $script:PmOut = Join-Path $fixture 'presentmon-fixture.csv'
-    [IO.File]::WriteAllText($script:PresentMon, @'
-$outputIndex = [Array]::IndexOf($args, '--output_file')
-if ($outputIndex -lt 0) { throw 'fixture requires output_file' }
-Write-Error 'fixture non-fatal elevation warning'
-[IO.File]::WriteAllLines($args[$outputIndex + 1], @('MsBetweenDisplayChange') + (@('20') * 20))
-'@)
-    Check ((Get-Fps) -eq '50.0,50.0') 'non-fatal capture warning still returns average and low FPS'
-    Check ($ErrorActionPreference -eq 'Stop') 'capture restores caller Stop error preference'
+    # Frame parsing is pure; the live feed must stay one long-lived session.
+    Check ((Format-Fps (@(20.0) * 20)) -eq '50.0,50.0') 'frame samples give average and low FPS'
+    Check ((Format-Fps (@(20.0) * 5)) -eq ',') 'too few frames give empty FPS'
+    $fpsSource = (Get-Command Get-FrameFeed).Definition
+    Check ($fpsSource -match '--output_stdout' -and $fpsSource -notmatch '--timed') 'FPS feed never restarts PresentMon per sample'
+    $script:FrameFeed = $null; Check ($null -eq (Get-FrameFeed $false)) 'feed stops when game is not running'
     Write-Output "PASS G-Helper process policy cases=$checks"
 } finally {
     # Fixture only, never the real game or user settings.
