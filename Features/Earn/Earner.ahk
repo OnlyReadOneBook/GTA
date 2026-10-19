@@ -146,15 +146,16 @@ ToggleEarner(*) {
         ShowTooltip("💰 수익 자동화 끄기 정리 중: 다시 켤 수 없음", 2000)
         return
     }
-    if (gEarnOn && gEarnMode = "full" && !gEarnBusy && IsObject(gEarnRecovery)) {
-        SetEarner(false, "정리 복구 대기 중 수동 중단. 화면 확인 후 다시 켜기")
-        return
-    }
+    ; F9 두 번은 MCT 수익 켜기·끄기다. 끄기는 자동화를 멈추지 않고 진행 중 묶음이 끝난 경계에서 바인우드 작업만 남긴다.
+    ; 끌 때 따로 MCT 정리·CEO 해제를 하지 않는다. CEO 해제는 MCT 작업 안에서만 한다 (1019 사용자 지시).
     if (gEarnOn && gEarnMode = "full") {
-        gEarnModeRequest := gEarnIdleEnabled ? "apps" : ""
-        SetEarner(false, "", "manual")
+        gEarnIdleEnabled := true
+        gEarnModeRequest := gEarnModeRequest = "apps" ? "" : "apps"
+        SetTimer(EarnModeTick, 1000)
+        ShowTooltip("💰 MCT 수익 끄는 중: 진행 작업이 끝나면 바인우드 작업만 계속", 2500)
+        EarnModeTick()
     } else if (gEarnOn) {
-        gEarnModeRequest := "full"
+        gEarnModeRequest := gEarnModeRequest = "full" ? "" : "full"
         EarnModeTick()
     } else {
         gEarnModeRequest := ""
@@ -206,6 +207,10 @@ SetEarner(on, reason := "", stopMode := "hard", mode := "full", preserveSchedule
         s := config["Settings"]
         for t in gEarnTasks {
             pending := EarnStateGet("pending_" t.id)
+            if (pending != "" && !EarnHoldsPending(t.id)) {
+                EarnStateSet("pending_" t.id, "")
+                pending := ""
+            }
             if (pending != "") {
                 gEarnHeld[t.id] := pending
                 gEarnFailures[t.id] := {reason: pending, nextTick: 0}
@@ -221,7 +226,7 @@ SetEarner(on, reason := "", stopMode := "hard", mode := "full", preserveSchedule
         if (config["Features"]["AntiAFK"] && !afkOn)
             SetAntiAFK(true)
         SetTimer(EarnTick, 1000)
-        ShowTooltip(mode = "apps" ? "💰 유휴 앱 자동 (" KeyLabelFor("Earner") " 두 번: 전체 수익, End: 멈춤)" : "💰 전체 수익 켜짐 (" KeyLabelFor("Earner") " 두 번: 유휴 앱, End: 멈춤)", 2500)
+        ShowTooltip(mode = "apps" ? "💰 유휴 앱 자동 (" KeyLabelFor("Earner") " 두 번: 전체 수익, End: 멈춤)" : "💰 전체 수익 켜짐 (" KeyLabelFor("Earner") " 두 번: MCT 수익 끄기, End: 멈춤)", 2500)
         EarnLog("켜짐: " EarnEnabledText())
     } else {
         SetTimer(EarnTick, 0)
@@ -400,7 +405,7 @@ EarnTick() {
         for t in dueTasks {
             if (finished.Has(t.id))
                 continue
-            pending := EarnStateGet("pending_" t.id)
+            pending := EarnHoldsPending(t.id) ? EarnStateGet("pending_" t.id) : ""
             if (pending != "") {
                 gEarnHeld[t.id] := pending
                 gEarnFailures[t.id] := {reason: pending, nextTick: 0}
@@ -439,6 +444,12 @@ EarnTick() {
         if (!gEarnOn)
             return
     }
+}
+
+; 앱 직원 파견은 이미 보낸 요원·조달 중인 창고를 게임이 비활성으로 막아 재요청해도 돈이 다시 나가지 않는다.
+; 그래서 결과 미확인으로 보류하지 않고 다음 차례에 화면을 다시 읽어 이어 간다 (1019 사용자 지시).
+EarnHoldsPending(id) {
+    return id != "staff"
 }
 
 EarnIsMCTTask(id) {
@@ -678,7 +689,7 @@ EarnFinishScheduledTask(result) {
     if (gEarnNextDue.Has(task.id))
         gEarnNextDue.Delete(task.id)
     reason := result.reason = "" ? task.label " 확인 실패" : result.reason
-    pending := EarnStateGet("pending_" task.id)
+    pending := EarnHoldsPending(task.id) ? EarnStateGet("pending_" task.id) : ""
     if (pending != "") {
         reason := reason " (" pending ")"
         gEarnHeld[task.id] := reason
