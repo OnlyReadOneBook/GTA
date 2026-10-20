@@ -11,6 +11,16 @@ ExecuteFriendWarp() {
     ExecuteBotWarp("friend")
 }
 
+FriendWarpWaitTrigger(hotkey) {
+    trigger := RegExReplace(hotkey, "^[~*$<>!^+#]+")
+    if (trigger = "")
+        return true
+    ; 실행키의 key-up도 물리 이벤트다. 그 이벤트 뒤에 유휴 기준을 잡는다.
+    try return KeyWait(trigger, "T1")
+    catch
+        return false
+}
+
 FriendWarpReady(&why) {
     global gImageRoot, gFriendWarpQuietSince
     why := ""
@@ -32,6 +42,10 @@ FriendWarpReady(&why) {
         }
     }
     InstallMouseHook()
+    if (!FriendWarpWaitTrigger(A_ThisHotkey) || BotWarpStopPressed() || !IsGTAActive()) {
+        why := "실행키 해제 대기 중 중단"
+        return false
+    }
     gFriendWarpQuietSince := A_TickCount
     return true
 }

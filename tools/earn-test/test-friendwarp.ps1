@@ -2,7 +2,7 @@
 param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe")
 $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Teleport\FriendWarp.ahk') -Raw -Encoding UTF8
-$functions = @('FriendWarpFindTarget', 'FriendWarpSameTarget', 'FriendWarpJoin', 'FriendWarpAnchor') | ForEach-Object {
+$functions = @('FriendWarpFindTarget', 'FriendWarpSameTarget', 'FriendWarpJoin', 'FriendWarpAnchor', 'FriendWarpWaitTrigger') | ForEach-Object {
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "$_ missing" }
     $body
@@ -15,6 +15,12 @@ $driver = @'
 #Warn All, StdOut
 OnError((err, *) => (FileAppend("ERROR: " err.Message " at " err.Line "`n", "*"), ExitApp(1)))
 global checks := 0, failures := 0
+global waitResult := true, waitedKey := ""
+Check(FriendWarpWaitTrigger("$*ScrollLock") && waitedKey = "ScrollLock", "release actual trigger key before input guard")
+waitResult := false
+Check(!FriendWarpWaitTrigger("$*ScrollLock"), "held trigger timeout does not start")
+waitedKey := ""
+Check(FriendWarpWaitTrigger("") && waitedKey = "", "panel action needs no trigger key")
 for row in [142, 226, 310, 394] {
     Reset(row)
     Check(FriendWarpFindTarget(&foundTarget, &why) && foundTarget.x = 1223 && foundTarget.y = row + 43, "name in row " row)
@@ -104,6 +110,11 @@ Click(*) {
     clicks += 1
 }
 MacroLog(*) => 0
+KeyWait(key, options) {
+    global waitedKey, waitResult
+    waitedKey := key
+    return waitResult && options = "T1"
+}
 '@
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath
@@ -122,7 +133,7 @@ try {
     if (-not $process.WaitForExit(10000)) { $process.Kill(); throw 'FriendWarp test timed out' }
     $stdout = $stdoutTask.GetAwaiter().GetResult().Trim()
     $stderr = $stderrTask.GetAwaiter().GetResult().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS FriendWarp: 15 cases; no game input') {
+    if ($process.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS FriendWarp: 18 cases; no game input') {
         throw "exit=$($process.ExitCode) stdout=$stdout stderr=$stderr"
     }
     $stdout
