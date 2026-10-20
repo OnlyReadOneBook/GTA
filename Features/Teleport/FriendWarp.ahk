@@ -73,14 +73,21 @@ FriendWarpOpen(&why) {
         why := "사용자 입력·중단 또는 포커스 이탈"
         return false
     }
-    if (FriendWarpAnchor(&x, &y))
-        return true
-    PressKey("Home")
+    ; Home 은 열리는 동안 미끄러져 들어온다. 한 번 보인 위치로 바로 넘어가면 다음 판독에서 놓친다
+    ; (1021 02:34 실측: Home 을 연 뒤 1초 만에 "친구 목록이 보이지 않음"). 같은 자리에서 두 번 보일 때 연 것으로 본다.
+    lastX := "", lastY := ""
+    if (!FriendWarpAnchor(&lastX, &lastY))
+        PressKey("Home")
     Loop 30 {
         if (!FriendWarpWait(100))
             break
-        if (FriendWarpAnchor(&x, &y))
+        if (!FriendWarpAnchor(&x, &y)) {
+            lastX := "", lastY := ""
+            continue
+        }
+        if (x = lastX && y = lastY)
             return true
+        lastX := x, lastY := y
     }
     why := "Home 친구 목록을 확인하지 못함"
     return false
