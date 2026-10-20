@@ -62,6 +62,7 @@ BotWarpAddDefaults() {
 
 global gBotWarpStep := ""        ; 오버레이·로그에 보일 지금 단계
 global gBotWarpStartTick := 0
+global gBotWarpMode := "steam"
 
 ; --- 스팀 쪽 (0926 실측) ---
 global BOTWARP_CHAT_TITLE := "CCYXJ差传"          ; 그룹 채팅 창 제목 (정확히 같아야 한다)
@@ -111,8 +112,9 @@ global BOTWARP_LINE_TOL := 0.25
 global BOTWARP_HUD_BAR := [0.021, 0.972, 0.05, 0.978]
 global BOTWARP_HUD_GREEN := 0x4C8F4C
 
-ExecuteBotWarp() {
+ExecuteBotWarp(mode := "steam") {
     global botWarpRunning, gAbort, gBotWarpStep, gBotWarpStartTick, gMenuBusy, clawLoopRunning, gEarnBusy
+    global gBotWarpMode
 
     if (!IsGTAActive() || IsTeleportRunning())
         return
@@ -122,61 +124,68 @@ ExecuteBotWarp() {
         return
     }
     botWarpRunning := true
+    gBotWarpMode := mode
     gAbort := false
     gBotWarpStartTick := A_TickCount
     BotWarpAbortKeys(true)   ; 스팀 창이 앞이어도 End 가 먹게(평소 End 는 GTA 창에서만 잡힌다)
     result := "오류로 끝남"
-    ShowTooltip("🚀 스팀 작텔 시작 (" KeyLabelFor("StopAll") ": 중단)", 1500)
+    ShowTooltip("🚀 " (mode = "friend" ? "친구 텔" : "스팀 작텔") " 시작 (" KeyLabelFor("StopAll") ": 중단)", 1500)
     try {
-        result := BotWarpRun()
+        result := BotWarpRun(mode)
     } finally {
         botWarpRunning := false
         BotWarpAbortKeys(false)
         gBotWarpStep := ""
-        MacroLog("botwarp", "끝 (" Round((A_TickCount - gBotWarpStartTick) / 1000) "초): " result)
+        MacroLog(mode = "friend" ? "friendwarp" : "botwarp", "끝 (" Round((A_TickCount - gBotWarpStartTick) / 1000) "초): " result)
     }
 }
 
 ; 오버레이·설정 창 한 줄 상태. 돌고 있지 않으면 ""
 BotWarpStatusText() {
-    global botWarpRunning, gBotWarpStep, gBotWarpStartTick
+    global botWarpRunning, gBotWarpStep, gBotWarpStartTick, gBotWarpMode
     if (!botWarpRunning)
         return ""
-    return "스팀 작텔: " gBotWarpStep " " Round((A_TickCount - gBotWarpStartTick) / 1000) "초"
+    return (gBotWarpMode = "friend" ? "친구 텔: " : "스팀 작텔: ") gBotWarpStep " " Round((A_TickCount - gBotWarpStartTick) / 1000) "초"
 }
 
-BotWarpRun() {
+BotWarpRun(mode := "steam") {
     global config, gAbort, BOTWARP_HINT_AREA
     s := config["Settings"]
 
     ; 0) 시작 조건. 여기서 멈추면 게임에도 스팀에도 아무것도 보내지 않은 것이다
-    if (!FileExist(BotWarpSteamImage("join_game")))
+    if (mode = "steam" && !FileExist(BotWarpSteamImage("join_game")))
         return BotWarpFail("Images\BotWarp\steam\join_game.png 가 없어 시작하지 않음 (Join Game 을 확인 없이 누르지 않으려고). 만드는 법은 BotWarp.ahk 맨 위", "join_game.png 없음")
     if (!BotWarpScreenOk(&why))
         return BotWarpFail(why, "화면 비율")
 
-    ; 1) 스팀 채팅 창 준비. 여기까지는 게임에 키를 보내지 않는다
-    BotWarpSetStep("스팀 창 준비")
-    chat := BotWarpFindChat()
-    if (!chat) {
-        if (!FileExist(BotWarpSteamImage("open_in_steam")) || !FileExist(BotWarpSteamImage("join_group_chat")))
-            return BotWarpFail('스팀 그룹 채팅 창 "CCYXJ差传" 을 열어 두고 다시 누르세요 (초대 링크로 자동으로 열려면 open_in_steam.png·join_group_chat.png 가 필요)', "채팅 창 없음 (초대 경로 참조 이미지 없음)")
-        chat := BotWarpOpenChat()
-        if (gAbort)
-            return BotWarpFail("중단 (게임에는 아무 키도 보내지 않음)", "중단: 채팅 창 열기")
-        if (!chat)
-            return BotWarpFail('스팀 그룹 채팅 창 "CCYXJ差传" 을 열어 두고 다시 누르세요 (초대 링크로 열지 못함)', "채팅 창 없음")
-        if (!BringGTAToFront() || !WaitAbortable(800))
-            return BotWarpFail("채팅 창을 연 뒤 GTA 로 돌아오지 못함: 지도에서 작업을 다시 골라 누르세요", "채팅 창 연 뒤 GTA 복귀 실패")
-    }
-    if (!BotWarpPlaceChat(chat, &wx, &wy, &why))
-        return BotWarpFail("스팀 채팅 창 자리 맞추기 실패: " why, "창 배치 실패: " why)
-    ; 최소화된 채팅 창을 펴면 창이 앞으로 나올 수 있다. 한 번 되찾는다
-    if (!gAbort && !IsGTAActive()) {
-        MacroLog("botwarp", "채팅 창 자리를 맞추는 동안 GTA 가 뒤로 감 → 되찾음")
-        if (BringGTAToFront())
-            WaitAbortable(500)
-    }
+    if (mode = "friend") {
+        BotWarpSetStep("친구 참가 가능 여부 확인")
+        if (!FriendWarpPrepare(&why))
+            return BotWarpFail(why, "친구 준비: " why)
+    } else {
+        ; 1) 스팀 채팅 창 준비. 여기까지는 게임에 키를 보내지 않는다
+        BotWarpSetStep("스팀 창 준비")
+        chat := BotWarpFindChat()
+        if (!chat) {
+            if (!FileExist(BotWarpSteamImage("open_in_steam")) || !FileExist(BotWarpSteamImage("join_group_chat")))
+                return BotWarpFail('스팀 그룹 채팅 창 "CCYXJ差传" 을 열어 두고 다시 누르세요 (초대 링크로 자동으로 열려면 open_in_steam.png·join_group_chat.png 가 필요)', "채팅 창 없음 (초대 경로 참조 이미지 없음)")
+            chat := BotWarpOpenChat()
+            if (gAbort)
+                return BotWarpFail("중단 (게임에는 아무 키도 보내지 않음)", "중단: 채팅 창 열기")
+            if (!chat)
+                return BotWarpFail('스팀 그룹 채팅 창 "CCYXJ差传" 을 열어 두고 다시 누르세요 (초대 링크로 열지 못함)', "채팅 창 없음")
+            if (!BringGTAToFront() || !WaitAbortable(800))
+                return BotWarpFail("채팅 창을 연 뒤 GTA 로 돌아오지 못함: 지도에서 작업을 다시 골라 누르세요", "채팅 창 연 뒤 GTA 복귀 실패")
+        }
+        if (!BotWarpPlaceChat(chat, &wx, &wy, &why))
+            return BotWarpFail("스팀 채팅 창 자리 맞추기 실패: " why, "창 배치 실패: " why)
+        ; 최소화된 채팅 창을 펴면 창이 앞으로 나올 수 있다. 한 번 되찾는다
+        if (!gAbort && !IsGTAActive()) {
+            MacroLog("botwarp", "채팅 창 자리를 맞추는 동안 GTA 가 뒤로 감 → 되찾음")
+            if (BringGTAToFront())
+                WaitAbortable(500)
+        }
+        }
     if (gAbort || !IsGTAActive())
         return BotWarpFail("GTA 가 앞에 없어 시작하지 않음", "시작 전 포커스 이탈")
     ; 무슨 알림인지 모르는 채로 Space·Enter 를 보내지 않는다.
@@ -196,6 +205,8 @@ BotWarpRun() {
 
     ; 2) 작업 시작: Space → CONFIRM "start this Job?" → Enter (목록에서 골라 CONFIRM 이 이미 떠 있으면 Space 는 건너뛴다)
     BotWarpSetStep("작업 시작")
+    if (mode = "friend" && !FriendWarpGuard())
+        return BotWarpFail("친구 텔 중단: 사용자 입력 또는 포커스 이탈", "작업 시작 전 중단")
     if (!fromList) {
         PressKey("Space")
         r := BotWarpWaitAlert(s["BotWarpConfirmTimeoutMs"])
@@ -242,6 +253,12 @@ BotWarpRun() {
     if (!WaitAbortable(s["BotWarpAfterConfirmMs"]))
         return BotWarpFail("중단: 작업이 로딩 중이니 봇에 직접 Join Game 하거나 작업을 나가세요", "중단: 작업 로딩")
 
+    if (mode = "friend") {
+        BotWarpSetStep("-Atra_Mora- JOIN GAME")
+        if (!FriendWarpJoin(&why))
+            return BotWarpFail("친구 참가 중단: " why ". 작업 로딩과 Home 화면을 직접 확인하세요", why)
+        return BotWarpJoinAlerts("friend")
+    }
     ; 3) 스팀: 봇에 Join Game
     BotWarpSetStep("스팀 Join Game")
     if (!BotWarpSteamJoin(chat, &why)) {
@@ -256,11 +273,11 @@ BotWarpRun() {
 
 ; Join Game 뒤. 참가 알림(다른 세션 참가 → [조준 모드] → incompatible assets)을 이 순서로 판정해 Enter 하고, 체력 막대가 보이면 도착으로 본다.
 ; 순서에 없는 알림·quit 로고·사용자의 키보드 입력이 보이면 키를 더 보내지 않고 멈춘다.
-BotWarpJoinAlerts() {
+BotWarpJoinAlerts(mode := "steam") {
     global config, gAbort
     s := config["Settings"]
     BotWarpSetStep("GTA 로 복귀")
-    if (!BringGTAToFront())
+    if (mode = "friend" ? !FriendWarpGuard() : !BringGTAToFront())
         return BotWarpFail("GTA 를 앞으로 가져오지 못함: 직접 GTA 로 가서 알림마다 Enter (마지막은 Continue)", "GTA 복귀 실패")
     BotWarpSetStep("참가 알림 대기")
     joinStart := A_TickCount
@@ -268,6 +285,8 @@ BotWarpJoinAlerts() {
     deadline := joinStart + s["BotWarpJoinAlertTimeoutMs"]
     done := Map(), last := "", hud := 0, refocus := 0
     Loop {
+        if (mode = "friend" && !FriendWarpGuard())
+            return BotWarpFail("친구 텔 중단: 사용자 입력 또는 포커스 이탈", "참가 단계 입력 중단")
         if (gAbort)
             return BotWarpFail("중단: 남은 알림은 직접 Enter (마지막은 Continue)", "중단: 참가 알림")
         if (BotWarpUserTyped(quietSince))
@@ -321,8 +340,10 @@ BotWarpJoinAlerts() {
             if (hud >= 2) {
                 if (!done.Has("incompatible"))
                     return BotWarpFail("incompatible assets 알림 없이 게임 화면으로 돌아옴: 봇 세션에 들어갔을 수 있으니 위치를 직접 확인하세요", "incompatible 없이 도착 (Enter " BotWarpDoneText(done) ")")
-                ShowTooltip("✅ 스팀 작텔 완료 (작업 출발점 확인). 이 세션에서 다시 작업을 시작하면 막히니 다음 작텔은 "
-                    . KeyLabelFor("InviteOnlySession") " 두 번으로 세션을 옮긴 뒤", 5000)
+                ShowTooltip(mode = "friend"
+                    ? "✅ 친구 참가 알림 처리 완료. 도착 위치는 화면에서 확인하세요."
+                    : "✅ 스팀 작텔 완료 (작업 출발점 확인). 이 세션에서 다시 작업을 시작하면 막히니 다음 작텔은 "
+                        . KeyLabelFor("InviteOnlySession") " 두 번으로 세션을 옮긴 뒤", 5000)
                 return "완료 (알림 Enter " BotWarpDoneText(done) ", Join Game 뒤 " Round((A_TickCount - joinStart) / 1000) "초)"
             }
             Sleep(700)
@@ -885,9 +906,11 @@ BotWarpWaitAlertGone(timeoutMs) {
 ; want 가 "*" 이면 quit 로고만 아니면 된다. quit 로고에는 무엇을 넘겨도 보내지 않는다.
 ; 돌려주는 값: "sent", "gone"(알림이 사라짐), "abort"(전체 멈춤·포커스 이탈), 그 밖에는 지금 뜬 알림의 종류(키를 보내지 않았다)
 BotWarpKeyOnAlert(key, want) {
-    global gAbort
+    global gAbort, gBotWarpMode, botWarpRunning
     Loop 2 {
         if (gAbort || !IsGTAActive())
+            return "abort"
+        if (IsSet(gBotWarpMode) && gBotWarpMode = "friend" && botWarpRunning && !FriendWarpGuard())
             return "abort"
         if (!BotWarpAlertVisible())
             return "gone"
@@ -908,6 +931,8 @@ BotWarpKeyOnAlert(key, want) {
         return kind
     }
     if (gAbort || !IsGTAActive())
+        return "abort"
+    if (IsSet(gBotWarpMode) && gBotWarpMode = "friend" && botWarpRunning && !FriendWarpGuard())
         return "abort"
     PressKey(key)
     MacroLog("botwarp", key " 보냄: " kind " (" info ")")

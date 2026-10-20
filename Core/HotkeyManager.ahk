@@ -43,6 +43,7 @@ RegisterActions() {
     gActions.Push({id: "TeleportMC2", label: "MC 재등록 텔레포트", fn: (*) => TeleportMC("MC"), feature: "Teleport", confirm: true})
     gActions.Push({id: "TeleportAltF4", label: "작텔(Alt+F4)", fn: (*) => TeleportAltF4(), feature: "AltF4Teleport", confirm: true})
     gActions.Push({id: "BotWarp", label: "작텔(스팀 봇)", fn: (*) => TeleportBotWarp(), feature: "BotWarp", confirm: true})
+    gActions.Push({id: "FriendWarp", label: "친구 텔(-Atra_Mora-)", fn: (*) => ExecuteFriendWarp(), feature: "FriendWarp", confirm: true})
     gActions.Push({id: "CasinoFingerprint", label: "지문 해킹", fn: (*) => ExecuteCasinoFingerprint(), feature: "CasinoFingerprint"})
 }
 

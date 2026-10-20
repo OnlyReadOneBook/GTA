@@ -39,16 +39,16 @@ foreach ($path in @('Images/Earn/1920x1080/afk_vinewood_title.png', 'Images/Earn
 }
 
 $ci = Get-CiCheckPlan @('tools/ci/run-checks.ps1')
-Check ($ci.Full -and $ci.Suites.Count -eq 41 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
+Check ($ci.Full -and $ci.Suites.Count -eq 42 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
 
 $workflow = Get-CiCheckPlan @('.github/workflows/ci.yml')
-Check ($workflow.Full -and $workflow.Suites.Count -eq 41 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
+Check ($workflow.Full -and $workflow.Suites.Count -eq 42 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
 
 $gitStylePath = Get-CiCheckPlan @('./Features/Earn/EarnStaff.ahk')
 Check (($gitStylePath.Suites -join ',') -eq 'test-earner,test-earnvinewood,test-earnstaff') 'leading ./ is normalized without losing dot-prefixed paths'
 
 $unknown = Get-CiCheckPlan @('Features/NewFeature.ahk')
-Check ($unknown.Full -and $unknown.Suites.Count -eq 41) 'unknown production paths conservatively run all suites'
+Check ($unknown.Full -and $unknown.Suites.Count -eq 42) 'unknown production paths conservatively run all suites'
 $ledger = Get-CiCheckPlan @('Features/Earn/EarnLedger.ahk')
 Check (-not $ledger.Full -and ($ledger.Suites -join ',') -eq 'test-earner,test-earnledger') 'ledger source selects transaction and scheduler checks'
 $ledgerTest = Get-CiCheckPlan @('tools/earn-test/test-earnledger.ps1')
