@@ -1175,6 +1175,8 @@ EarnMCTOpen() {
 }
 
 EarnTerrorbyteMCTOpen() {
+    global gEarnMCTOpenKind
+    gEarnMCTOpenKind := "terrorbyte"
     if (!EarnSeen("mct_terrorbyte") || !DiscordHUDMCTSet(true) || !EarnPress("Space"))
         return false
     if (!EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 8000)) {
@@ -1186,7 +1188,8 @@ EarnTerrorbyteMCTOpen() {
 }
 
 EarnChairMCTOpen() {
-    global EARN_PROMPT_AREA
+    global EARN_PROMPT_AREA, gEarnMCTOpenKind
+    gEarnMCTOpenKind := "chair"
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA)) {
         ; CEO 메뉴가 닫힌 직후 접근 안내가 늦게 돌아올 수 있다.
         if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000))
@@ -1235,7 +1238,11 @@ EarnMCTClose(requireChairPrompt := true, &terminalKind := "") {
 }
 
 EarnMCTClosedKind() {
-    global EARN_PROMPT_AREA
+    global EARN_PROMPT_AREA, gEarnMCTOpenKind
+    ; 테러바이트로 연 MCT 는 닫은 직후 1~2초 안내가 비는 동안 착석 템플릿이 잘못 맞아 의자 닫기(일어서기)로 갔다(1020 11:52 녹화).
+    ; 테러바이트로 열었으면 테러바이트 안내만 기다린다.
+    if (IsSet(gEarnMCTOpenKind) && gEarnMCTOpenKind = "terrorbyte")
+        return EarnSeen("mct_terrorbyte") ? "terrorbyte" : ""
     ; 테러바이트 안내가 착석 템플릿에도 맞을 수 있어 전용 안내를 먼저 확인한다.
     if (EarnSeen("mct_terrorbyte"))
         return "terrorbyte"
