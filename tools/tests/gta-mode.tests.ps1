@@ -321,8 +321,8 @@ try {
     # Frame parsing is pure; the live feed must stay one long-lived session.
     Check ((Format-Fps (@(20.0) * 20)) -eq '50.0,50.0') 'frame samples give average and low FPS'
     Check ((Format-Fps (@(20.0) * 5)) -eq ',') 'too few frames give empty FPS'
-    $fpsSource = (Get-Command Get-FrameFeed).Definition
-    Check ($fpsSource -match '--output_stdout' -and $fpsSource -notmatch '--timed') 'FPS feed never restarts PresentMon per sample'
+    $fpsSource = (Get-Command New-FrameFeed).Definition
+    Check ($fpsSource -match '--output_stdout' -and $fpsSource -notmatch '--timed') 'FPS launch streams without a timed termination'
     $script:FrameFeed = $null; Check ($null -eq (Get-FrameFeed $false)) 'feed stops when game is not running'
     Write-Output "PASS G-Helper process policy cases=$checks"
 } finally {
