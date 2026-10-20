@@ -540,9 +540,12 @@ function Get-FrameFeed([bool]$Running) {
             } catch { }
         }
         if (-not (Test-FrameFeedStalled $script:FrameFeed ([datetime]::UtcNow) $foreground)) { return $script:FrameFeed }
-        Add-PerfLine (Join-Path $script:PerfDir 'health.jsonl') (@{
-            time = (Get-Date).ToString('o'); error = 'PresentMon stdout stalled for 60 seconds while game was foreground; restarting'
-        } | ConvertTo-Json -Compress)
+        $script:RecoveryLogError = ''
+        try {
+            Add-PerfLine (Join-Path $script:PerfDir 'health.jsonl') (@{
+                time = (Get-Date).ToString('o'); error = 'PresentMon stdout stalled for 60 seconds while game was foreground; restarting'
+            } | ConvertTo-Json -Compress)
+        } catch { $script:RecoveryLogError = 'recovery log: ' + $_.Exception.Message }
     }
     if ($script:FrameFeed) {
         $script:FeedError = $script:FrameFeed.LastError
@@ -627,6 +630,7 @@ function Write-Perf([datetime]$Now = (Get-Date)) {
     } catch { $errors += 'csv: ' + $_.Exception.Message }
     $feed = $script:FrameFeed
     if ($script:FeedError) { $errors += $script:FeedError }
+    if ($script:RecoveryLogError) { $errors += $script:RecoveryLogError }
     if ($feed -and $feed.LastError) { $errors += $feed.LastError }
     $status = @{
         time = (Get-Date).ToString('o'); watcher_pid = $PID; csv = $csv; csv_saved = $saved

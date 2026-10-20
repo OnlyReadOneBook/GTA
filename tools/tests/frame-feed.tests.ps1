@@ -151,6 +151,32 @@ Start-Sleep -Seconds 10
     $status = Get-Content -LiteralPath (Join-Path $script:PerfDir 'status.json') -Raw | ConvertFrom-Json
     $health = @(Get-Content -LiteralPath (Join-Path $script:PerfDir 'health.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
     Check 'missing FPS produces explicit health even when sensors succeed' ($status.csv_saved -and -not $status.fps_available -and $health.Count -eq 2 -and -not $health[1].fps_available)
+
+    $script:Game = 'fixture-game'
+    $script:NextFeedStart = [datetime]::Now.AddMinutes(5)
+    $script:RecoveryLogError = ''
+    $script:FrameFeed = [pscustomobject]@{
+        Alive = $true; LastOutputUtc = [datetime]::UtcNow.AddMinutes(-2)
+        LastError = ''; Stopped = $false
+    }
+    $script:FrameFeed | Add-Member -MemberType ScriptMethod -Name Stop -Value { $this.Stopped = $true }
+    $recoveryFeed = $script:FrameFeed
+    function Get-ModeDesktopState { return @{ Available = $true; ProcessId = 123 } }
+    function Get-Process {
+        param([string]$Name, [string]$ErrorAction)
+        if ($Name -ne 'fixture-game') { throw "Unexpected process lookup: $Name" }
+        return [pscustomobject]@{ Id = 123 }
+    }
+    $reader = [IO.File]::Open((Join-Path $script:PerfDir 'health.jsonl'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+    $recoveryResult = Get-FrameFeed $true
+    $reader.Dispose()
+    $reader = $null
+    Check 'locked recovery log does not prevent stopping the stalled feed' ($recoveryFeed.Stopped -and $null -eq $script:FrameFeed)
+    Check 'recovery respects restart cooldown without launching another process' ($null -eq $recoveryResult)
+    Check 'recovery log failure is retained for independent status reporting' ($script:RecoveryLogError.StartsWith('recovery log: '))
+    Write-Perf ([datetime]'2026-10-20T00:00:30')
+    $status = Get-Content -LiteralPath (Join-Path $script:PerfDir 'status.json') -Raw | ConvertFrom-Json
+    Check 'status exposes recovery log failure while continuing CSV persistence' ($status.csv_saved -and $status.errors -contains $script:RecoveryLogError)
     $results | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $FixtureDir 'results.json') -Encoding UTF8
     Write-Output ("PASS: {0} assertions; fixtures: {1}" -f $results.Count, $FixtureDir)
 } finally {
