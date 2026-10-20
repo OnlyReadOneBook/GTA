@@ -30,6 +30,8 @@ function Get-Process {
     }
     return [pscustomobject]@{ ProcessName='GHelper'; Id=1; HasExited=$false; StartTime=[datetime]'2026-01-01' }
 }
+function Get-ModeProcess([int]$ProcessId) { Get-Process -Id $ProcessId }
+function Get-ModeProcesses([string]$Name) { Get-Process -Name $Name }
 function Set-FixtureSignal([string]$Text) { [IO.File]::WriteAllText($script:AwaySignalPath, $Text) }
 $script:afterModeWait = $null
 function Start-Sleep {
@@ -271,6 +273,9 @@ try {
     Reset-UiFixture; $script:uiDesktop = @(10,10,11,11)
     Throws { Invoke-GHelperModeButton 2 $helper } 'foreground change during invocation is reported'
     Check ($script:restoreCalls -eq 1) 'unexpected foreground change still cleans prepared window'
+    Reset-UiFixture; Set-FixtureAway '1'
+    Throws { Invoke-GHelperModeButton 1 $helper -ValidatePolicy } 'expired active policy rejects obsolete Turbo dispatch'
+    Check ($script:buttonCalls -eq 0 -and $script:restoreCalls -eq 1) 'obsolete mode request restores prepared window without invoking'
 
     ${function:Set-GHelperMode} = $realSet
     $script:sendCalls = 0
@@ -303,6 +308,16 @@ try {
     $script:LastModeAttemptKey = ''; $script:ackLog = $true; $script:ackConfig = $false
     Set-FixtureMode 1
     Throws { Set-GHelperMode 2 } 'new ACPI ACK without matching config is rejected'
+    $script:LastModeAttemptKey = ''; $script:ackConfig = $true; $script:clockStep = 1
+    Set-FixtureMode 1
+    $script:realReadMode = ${function:Get-Mode}; $script:modeReadCount = 0
+    function Get-Mode {
+        if ($script:modeReadCount++ -eq 1) { throw [IO.FileNotFoundException]::new('G-Helper is replacing config') }
+        & $script:realReadMode
+    }
+    Check (Set-GHelperMode 2) 'transient config replacement is retried within acknowledgement deadline'
+    Check ($script:modeReadCount -ge 3) 'verification resumes after the missing-config observation'
+    ${function:Get-Mode} = $script:realReadMode
 
     ${function:Set-ModeCpuPolicy} = $realCpu
     $script:powerCalls = @(); $script:powerFailure = $false
@@ -340,3 +355,5 @@ try {
 $testHost = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 & $testHost -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'telemetry-isolation.tests.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Telemetry isolation suite failed in its clean process.' }
+& $testHost -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'mode-native.tests.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Native mode suite failed in its clean process.' }
