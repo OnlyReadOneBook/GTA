@@ -112,6 +112,17 @@ EarnTick()
 Check(!IsObject(gEarnRecovery) && calls.Length = 2 && bossOffCount = 1
     && gEarnDone["bunker"] = 1 && gEarnDone["dj"] = 1 && HasLog("복구 완료:"),
     "real HUD and CEO confirmation release the original batch exactly once after unknown screens")
+Reset()
+endOK := false, endNoScreen := true, recoveryHud := false, recoveryHudAfter := false
+EarnTick()
+Loop 5 {
+    if (!IsObject(gEarnRecovery))
+        break
+    fakeTick := gEarnRecovery.nextTick
+    EarnTick()
+}
+Check(!gEarnOn && !IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && HasLog("복구 포기:"),
+    "unrecognized cleanup stops after the attempt cap so AFK input resumes instead of looping forever")
 for boundary in ["boss-unconfirmed", "menu-close-failed", "hud-lost"] {
     Reset()
     endOK := false, endNoScreen := true
@@ -1458,7 +1469,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 227 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 228 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

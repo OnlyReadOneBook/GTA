@@ -449,6 +449,15 @@ EarnTick() {
     ; DJ 확인창이 남아도 no-screen으로 판독된 1012 방치 추방처럼, 실제 정리 확인 전에는 복구를 유지한다.
     if (!outcome.cleanupOK) {
         attempts := recovering ? gEarnRecovery.attempts + 1 : 1
+        ; 정리 화면을 끝내 못 읽으면 같은 복구가 입력 없이 무한 반복되고, 그동안 AFK 입력도 차례를 못 얻는다.
+        ; 1020 17:35~17:49 벙커 배송 팝업 미인식으로 61회 반복하다 방치 추방됐다. 한도를 넘으면 멈추고 AFK 타이머에 넘긴다.
+        maxAttempts := config["Settings"].Get("EarnRecoveryMaxAttempts", 5)
+        if (attempts > maxAttempts) {
+            gEarnRecovery := ""
+            EarnLog("복구 포기: " task.id " 정리 미확인 " maxAttempts "회 초과 (" gEarnFail ")")
+            EarnStopAfterFailure(task.label " 정리 화면 미확인 " maxAttempts "회 초과 (" gEarnFail ")")
+            return
+        }
         delay := 0
         gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: attempts, nextTick: A_TickCount + delay}
         EarnLog("복구 대기: " task.id " 정리 미확인 (" gEarnFail ") → 확인된 정리 경로 바로 재시도; 수익 작업 대기")
