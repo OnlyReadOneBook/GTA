@@ -38,9 +38,19 @@ function Read-AwayMode([string]$Path) { return (Read-ModeSettings $Path).Manual 
 
 function Test-AwaySender([int]$SenderId) {
     try {
-        $sender = Get-Process -Id $SenderId -ErrorAction Stop
+        $sender = Get-ModeProcess $SenderId
         return -not $sender.HasExited -and $sender.ProcessName -match '^AutoHotkey(?:32|64)?$'
     } catch { return $false }
+}
+
+function Get-ModeProcess([int]$ProcessId) {
+    Initialize-ModeWindow
+    return [GtaModeWindow]::ReadProcess([uint32]$ProcessId)
+}
+
+function Get-ModeProcesses([string]$Name) {
+    Initialize-ModeWindow
+    return [GtaModeWindow]::FindProcesses($Name)
 }
 
 function Get-ModeTickCount {
@@ -50,20 +60,21 @@ function Get-ModeTickCount {
 
 function Read-AwaySignal([string]$Path) {
     try {
-        $text = [IO.File]::ReadAllText($Path)
+        $text = Invoke-GtaTraceStage -Stage 'policy.signal.read' -Action { [IO.File]::ReadAllText($Path) }
         if ($text -notmatch '\Av1\|([1-9]\d{0,9})\|(\d{1,20})\|([01])\|([01])\z') { return $null }
         [int]$senderId = 0; [uint64]$tick = 0
         if (-not [int]::TryParse($Matches[1], [ref]$senderId) -or
             -not [uint64]::TryParse($Matches[2], [ref]$tick)) { return $null }
         $autoAway = $Matches[3] -eq '1'; $cpuWanted = $Matches[4] -eq '1'
         [uint64]$now = Get-ModeTickCount
-        if ($tick -gt $now -or ($now - $tick) -gt 15000 -or -not (Test-AwaySender $senderId)) { return $null }
+        if ($tick -gt $now -or ($now - $tick) -gt 15000) { return $null }
+        if (-not (Invoke-GtaTraceStage -Stage 'policy.sender.check' -Data @{ sender_pid = $senderId } -Action { Test-AwaySender $senderId })) { return $null }
         return @{ AutoAway = $autoAway; CpuWanted = $cpuWanted; SenderId = $senderId; Tick = $tick }
     } catch { return $null }
 }
 
 function Get-WantedModePolicy {
-    $settings = Read-ModeSettings $script:MacroConfig
+    $settings = Invoke-GtaTraceStage -Stage 'policy.settings.read' -Action { Read-ModeSettings $script:MacroConfig }
     $signal = Read-AwaySignal $script:AwaySignalPath
     $away = $settings.Manual -or ($settings.Automatic -and $null -ne $signal -and $signal.AutoAway)
     $cpuWanted = if ($away) { $false } elseif ($null -ne $signal) { $signal.CpuWanted } else { $true }
@@ -123,7 +134,7 @@ function Invoke-ModeTick([bool]$Running) {
     }
     $away = if ($Running) { (Get-WantedModePolicy).Away } else { $false }
     $target = Get-WantedGameMode $Running $away
-    $changed = Invoke-GtaTraceStage -Stage 'mode.set' -Data @{ target = $target; running = $Running; away = $away } -Action { Set-GHelperMode $target }
+    $changed = Invoke-GtaTraceStage -Stage 'mode.set' -Data @{ target = $target; running = $Running; away = $away } -Action { Set-GHelperMode $target -ValidatePolicy }
     if ($changed) {
         $script:CpuPolicyKey = ''
         Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode=$target running=$Running applied"
@@ -153,12 +164,28 @@ using System.Runtime.InteropServices;
 using System.Text;
 public static class GtaModeWindow {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
-    public class Snapshot { public IntPtr Handle; public uint ProcessId; public string Title, Class; public bool Visible, Minimized, Enabled; public RECT Rect; }
+    public class Snapshot { public IntPtr Handle, Parent; public uint ProcessId; public string Title, Class; public bool Visible, Minimized, Enabled; public RECT Rect; }
+    public class ProcessIdentity { public int Id; public string ProcessName; public DateTime StartTime; public bool HasExited; }
+    public class ListedProcess { public int Id; public string ProcessName; }
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct ProcessEntry {
+        public uint Size, Usage, ProcessId; public UIntPtr Heap; public uint Module, Threads, Parent;
+        public int Priority; public uint Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=260)] public string Name;
+    }
     delegate bool EnumProc(IntPtr window, IntPtr data);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(uint access, bool inherit, uint process);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr handle, uint timeout);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool QueryFullProcessImageName(IntPtr handle, uint flags, StringBuilder path, ref uint size);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetProcessTimes(IntPtr handle, out long created, out long exited, out long kernel, out long user);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint process);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool Process32First(IntPtr snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry entry);
     [DllImport("kernel32.dll")] public static extern ulong GetTickCount64();
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc callback, IntPtr data);
+    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc callback, IntPtr data);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int size);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder text, int size);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
@@ -176,6 +203,34 @@ public static class GtaModeWindow {
     [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
     [DllImport("kernel32.dll")] static extern void SetLastError(uint error);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
+    public static ProcessIdentity ReadProcess(uint id) {
+        IntPtr handle = OpenProcess(0x101000, false, id); // Query limited information and synchronize.
+        if (handle == IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
+        try {
+            if (WaitForSingleObject(handle, 0) != 258) throw new InvalidOperationException("Process exited.");
+            var path = new StringBuilder(32768); uint size = (uint)path.Capacity;
+            long created, exited, kernel, user;
+            if (!QueryFullProcessImageName(handle, 0, path, ref size) || !GetProcessTimes(handle, out created, out exited, out kernel, out user))
+                throw new System.ComponentModel.Win32Exception();
+            return new ProcessIdentity { Id=(int)id, ProcessName=System.IO.Path.GetFileNameWithoutExtension(path.ToString()), StartTime=DateTime.FromFileTimeUtc(created).ToLocalTime(), HasExited=false };
+        } finally { CloseHandle(handle); }
+    }
+    public static ListedProcess[] FindProcesses(string name) {
+        var result = new List<ListedProcess>();
+        IntPtr snapshot = CreateToolhelp32Snapshot(2, 0);
+        if (snapshot == new IntPtr(-1)) throw new System.ComponentModel.Win32Exception();
+        try {
+            var entry = new ProcessEntry(); entry.Size=(uint)Marshal.SizeOf(typeof(ProcessEntry));
+            if (!Process32First(snapshot, ref entry)) throw new System.ComponentModel.Win32Exception();
+            do {
+                if (!String.Equals(entry.Name, name + ".exe", StringComparison.OrdinalIgnoreCase)) continue;
+                result.Add(new ListedProcess { Id=(int)entry.ProcessId, ProcessName=System.IO.Path.GetFileNameWithoutExtension(entry.Name) });
+            } while (Process32Next(snapshot, ref entry));
+            int error = Marshal.GetLastWin32Error();
+            if (error != 18) throw new System.ComponentModel.Win32Exception(error);
+        } finally { CloseHandle(snapshot); }
+        return result.ToArray();
+    }
     public static bool InteractiveDesktop() {
         IntPtr desktop = OpenInputDesktop(0, false, 1);
         if (desktop == IntPtr.Zero) return false;
@@ -189,12 +244,44 @@ public static class GtaModeWindow {
         if (GetWindowThreadProcessId(window, out process) == 0 || !GetWindowRect(window, out rect)) throw new InvalidOperationException("G-Helper window disappeared.");
         var title = new StringBuilder(512); GetWindowText(window, title, title.Capacity);
         var cls = new StringBuilder(256); GetClassName(window, cls, cls.Capacity);
-        return new Snapshot { Handle=window, ProcessId=process, Title=title.ToString(), Class=cls.ToString(), Visible=IsWindowVisible(window), Minimized=IsIconic(window), Enabled=IsWindowEnabled(window), Rect=rect };
+        return new Snapshot { Handle=window, Parent=GetParent(window), ProcessId=process, Title=title.ToString(), Class=cls.ToString(), Visible=IsWindowVisible(window), Minimized=IsIconic(window), Enabled=IsWindowEnabled(window), Rect=rect };
     }
     public static Snapshot[] Find(uint process) {
         var windows = new List<Snapshot>();
         EnumWindows((window,data) => { uint id; GetWindowThreadProcessId(window,out id); if(id == process) { try { windows.Add(Read(window)); } catch {} } return true; }, IntPtr.Zero);
         return windows.ToArray();
+    }
+    public static Snapshot SelectModeButton(Snapshot settings, Snapshot[] children, int target) {
+        string[] labels = { "Balanced", "Turbo", "Silent" };
+        if (target < 0 || target >= labels.Length) throw new ArgumentOutOfRangeException("target");
+        var modes = new Snapshot[3];
+        foreach (var child in children) {
+            int index = Array.IndexOf(labels, child.Title);
+            if (index < 0) continue;
+            if (child.ProcessId != settings.ProcessId || child.Handle == settings.Handle || child.Handle == IntPtr.Zero ||
+                child.Class == null || !child.Class.StartsWith("WindowsForms10.Button", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Mode caption belongs to an unexpected native control.");
+            if (modes[index] != null) throw new InvalidOperationException("Ambiguous G-Helper mode caption.");
+            modes[index] = child;
+        }
+        foreach (var mode in modes)
+            if (mode == null || mode.Parent == IntPtr.Zero || mode.Parent != modes[0].Parent)
+                throw new InvalidOperationException("Expected one native G-Helper mode group.");
+        return modes[target];
+    }
+    public static Snapshot FindModeButton(Snapshot settings, int target) {
+        Identity(settings);
+        var children = new List<Snapshot>();
+        Exception failure = null;
+        EnumChildWindows(settings.Handle, (window,data) => {
+            try { children.Add(Read(window)); return true; }
+            catch (Exception error) { failure = error; return false; }
+        }, IntPtr.Zero);
+        if (failure != null) throw new InvalidOperationException("G-Helper child changed during enumeration.", failure);
+        var button = SelectModeButton(settings, children.ToArray(), target);
+        if (!MatchesButton(settings, button, IsChild(settings.Handle, button.Handle), button.Enabled))
+            throw new InvalidOperationException("G-Helper mode button is not available.");
+        return button;
     }
     static void Identity(Snapshot saved) {
         var current = Read(saved.Handle);
@@ -239,7 +326,7 @@ public static class GtaModeWindow {
         // Public Win32 BN_CLICKED notification to the observed DIRECT parent,
         // not a guessed menu ID or private reflected message. .NET 10 Control
         // reflects it to Button.WndProc, which raises the normal Click event.
-        // UIA identifies the control only; no accessibility action or focus call.
+        // Native captions identify the control; no accessibility traversal or focus call.
         UIntPtr result; SetLastError(0);
         if (SendMessageTimeout(parent.Handle, 0x0111, wParam, button.Handle, 0x23, 1500, out result) == IntPtr.Zero)
             throw new InvalidOperationException("G-Helper BN_CLICKED failed or timed out; error=" + Marshal.GetLastWin32Error());
@@ -281,7 +368,7 @@ function Get-ModeDesktopState {
     Initialize-ModeWindow
     $foreground = [GtaModeWindow]::GetForegroundWindow(); [uint32]$foregroundId = 0
     $null = [GtaModeWindow]::GetWindowThreadProcessId($foreground, [ref]$foregroundId)
-    $name = if ($foregroundId) { (Get-Process -Id $foregroundId -ErrorAction Stop).ProcessName } else { '' }
+    $name = if ($foregroundId) { (Get-ModeProcess $foregroundId).ProcessName } else { '' }
     return @{ Foreground = $foreground; ProcessId = $foregroundId;
         Available = ([GtaModeWindow]::InteractiveDesktop() -and $foreground -ne [IntPtr]::Zero -and $name -notin @('LockApp','LogonUI','consent')) }
 }
@@ -305,24 +392,13 @@ function Prepare-ModeSettingsWindow($Window) { [GtaModeWindow]::Prepare($Window)
 function Restore-ModeSettingsWindow($Window) { [GtaModeWindow]::Restore($Window) }
 
 function Get-ModeButton($Window, [int]$Target) {
-    Add-Type -AssemblyName UIAutomationClient
-    Add-Type -AssemblyName UIAutomationTypes
-    $element = [Windows.Automation.AutomationElement]::FromHandle($Window.Handle)
-    $buttonId = @('buttonBalanced','buttonTurbo','buttonSilent')[$Target]
-    $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, $buttonId)
-    $buttons = $element.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
-    if ($buttons.Count -ne 1 -or $buttons[0].Current.ProcessId -ne $Window.ProcessId -or
-        $buttons[0].Current.ControlType -ne [Windows.Automation.ControlType]::Button -or -not $buttons[0].Current.IsEnabled) {
-        throw 'Expected one enabled G-Helper mode button.'
-    }
-    $handle = [IntPtr]$buttons[0].Current.NativeWindowHandle
-    if ($handle -eq [IntPtr]::Zero) { throw 'G-Helper mode button has no native handle.' }
-    return @{ Window = $Window; Native = [GtaModeWindow]::Read($handle) }
+    Initialize-ModeWindow
+    return @{ Window = $Window; Native = [GtaModeWindow]::FindModeButton($Window, $Target) }
 }
 
 function Invoke-ModeButton($Button) { [GtaModeWindow]::ClickButton($Button.Window, $Button.Native) }
 
-function Invoke-GHelperModeButton([int]$Target, $Helper) {
+function Invoke-GHelperModeButton([int]$Target, $Helper, [switch]$ValidatePolicy) {
     $before = Get-ModeDesktopState
     if (-not $before.Available -or $before.ProcessId -eq $Helper.Id) { throw 'Desktop unavailable or G-Helper is being used; deferring mode change.' }
     $window = Invoke-GtaTraceStage -Stage 'ghelper.window.find' -Data @{ target = $Target; helper_pid = $Helper.Id } -Action { Get-ModeSettingsWindow $Helper }
@@ -330,9 +406,14 @@ function Invoke-GHelperModeButton([int]$Target, $Helper) {
     try {
         if (-not $window.Visible) { $prepared = $true; Invoke-GtaTraceStage -Stage 'ghelper.window.prepare' -Action { Prepare-ModeSettingsWindow $window } }
         $button = Invoke-GtaTraceStage -Stage 'ghelper.button.find' -Data @{ target = $Target } -Action { Get-ModeButton $window $Target }
+        if ($ValidatePolicy) {
+            $runningNow = [bool](Get-ModeProcesses $script:Game)
+            $wantedNow = Get-WantedGameMode $runningNow (Get-WantedModePolicy).Away
+            if ($wantedNow -ne $Target) { throw 'Mode policy changed during preparation; obsolete request was not sent.' }
+        }
         $ready = Get-ModeDesktopState; $trace += "ready=$($ready.Foreground)"
         if (-not $ready.Available -or $ready.Foreground -ne $before.Foreground) { throw 'Foreground changed before G-Helper invocation; deferred without input.' }
-        $currentHelper = Get-Process -Id $Helper.Id -ErrorAction Stop
+        $currentHelper = Get-ModeProcess $Helper.Id
         if ($currentHelper.StartTime.Ticks -ne $Helper.StartTime.Ticks) { throw 'G-Helper process identity changed.' }
         $script:LastModeAttemptKey = "$($Helper.Id):$($Helper.StartTime.Ticks):$Target"
         $script:NextModeAttempt = (Get-Date).AddMinutes(5)
@@ -349,13 +430,16 @@ function Invoke-GHelperModeButton([int]$Target, $Helper) {
     }
 }
 
-function Set-GHelperMode([int]$Target) {
+function Set-GHelperMode([int]$Target, [switch]$ValidatePolicy) {
     if ($Target -notin @(0,1,2)) { throw 'Automatic restore supports built-in G-Helper modes only.' }
-    $helpers = @(Get-Process -Name GHelper -ErrorAction SilentlyContinue)
+    $helpers = @(Invoke-GtaTraceStage -Stage 'ghelper.process.find' -Action { Get-ModeProcesses 'GHelper' })
     if ($helpers.Count -ne 1) { throw 'Expected one running G-Helper.' }
-    $current = Get-Mode
+    $helper = Invoke-GtaTraceStage -Stage 'ghelper.process.identity' -Action { Get-ModeProcess $helpers[0].Id }
+    if ($helper.ProcessName -ne 'GHelper') { throw 'G-Helper process identity changed.' }
+    $helpers = @($helper)
+    $current = Invoke-GtaTraceStage -Stage 'ghelper.config.read' -Action { Get-Mode }
     $helperLog = Join-Path (Split-Path $script:Config) 'log.txt'
-    $existingLog = [IO.File]::ReadAllText($helperLog)
+    $existingLog = Invoke-GtaTraceStage -Stage 'ghelper.log.read' -Action { [IO.File]::ReadAllText($helperLog) }
     $attemptKey = "$($helpers[0].Id):$($helpers[0].StartTime.Ticks):$Target"
     if ($script:LastModeAttemptKey -eq $attemptKey) {
         $lateTail = if ($existingLog.StartsWith($script:ModeAttemptLogBefore)) { $existingLog.Substring($script:ModeAttemptLogBefore.Length) } else { $existingLog }
@@ -368,7 +452,7 @@ function Set-GHelperMode([int]$Target) {
         throw 'Awaiting G-Helper acknowledgement; mode retry is limited to once per five minutes.'
     }
     $script:ModeAttemptLogBefore = $existingLog
-    Invoke-GHelperModeButton $Target $helpers[0]
+    Invoke-GHelperModeButton $Target $helpers[0] -ValidatePolicy:$ValidatePolicy
     # A config write precedes ACPI completion. Require a NEW final successful ACPI record too.
     return Invoke-GtaTraceStage -Stage 'ghelper.verify' -Data @{ target = $Target; helper_pid = $helpers[0].Id } -Action {
         $deadline = (Get-Date).AddSeconds(8)
@@ -376,7 +460,9 @@ function Set-GHelperMode([int]$Target) {
             Start-Sleep -Milliseconds 250
             $text = [IO.File]::ReadAllText($helperLog)
             $tail = if ($text.StartsWith($existingLog)) { $text.Substring($existingLog.Length) } else { $text }
-            if ((Get-Mode) -eq $Target -and (Test-ModeApplied $tail $Target)) {
+            $observedMode = $null
+            try { $observedMode = Get-Mode } catch [IO.FileNotFoundException] { }
+            if ($observedMode -eq $Target -and (Test-ModeApplied $tail $Target)) {
                 $script:LastModeAttemptKey = ''
                 return $true
             }
@@ -903,7 +989,7 @@ try {
         $loopSpan = [guid]::NewGuid().ToString('N'); $loopStarted = [Diagnostics.Stopwatch]::GetTimestamp()
         Write-GtaStageEvent -Stage 'loop' -Phase 'begin' -SpanId $loopSpan
         try {
-        $running = [bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue)
+        $running = [bool](Invoke-GtaTraceStage -Stage 'game.process.find' -Action { Get-ModeProcesses $script:Game })
         Invoke-ControlIteration $running
         } catch {
             Write-GtaStageEvent -Stage 'loop' -Phase 'error' -SpanId $loopSpan -Started $loopStarted -ErrorMessage $_.Exception.Message
