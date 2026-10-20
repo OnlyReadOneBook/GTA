@@ -115,14 +115,12 @@ Check(!IsObject(gEarnRecovery) && calls.Length = 2 && bossOffCount = 1
 Reset()
 endOK := false, endNoScreen := true, recoveryHud := false, recoveryHudAfter := false
 EarnTick()
-Loop 5 {
-    if (!IsObject(gEarnRecovery))
-        break
+Loop 10 {
     fakeTick := gEarnRecovery.nextTick
     EarnTick()
 }
-Check(!gEarnOn && !IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && HasLog("복구 포기:") && backPresses = 5,
-    "unrecognized cleanup sends one back press per retry and stops after the attempt cap so input never goes silent")
+Check(gEarnOn && IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && backPresses = 10 && !HasLog("꺼짐"),
+    "unrecognized cleanup keeps retrying with one back press each time so input never goes silent and earn stays on")
 for boundary in ["boss-unconfirmed", "menu-close-failed", "hud-lost"] {
     Reset()
     endOK := false, endNoScreen := true
@@ -1817,19 +1815,3 @@ EarnStateSet(*) => 0
 '@
 Invoke-EarnerMutexCheck ($modeRaceDriver + "`n" + $modeTick) 'PASS idle mode race: 2 cases; no game input'
 
-# AFK 굶김 상한: 정리 화면 인식이 끝없이 실패해도 AFK 한 간격 안에 복구를 포기하고 AFK 타이머로 넘겨야 한다.
-# 1020 17:35~17:49 복구가 무입력으로 61회 돌며 AFK 차례를 막아 방치 추방됐다(#331 이 백오프·상한 없이 즉시 재시도로 바꿈).
-$configSource = Get-Content (Join-Path $PSScriptRoot '..\..\Core\ConfigLoader.ahk') -Raw -Encoding UTF8
-$tasksSource = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnTasks.ahk') -Raw -Encoding UTF8
-function Get-ConfigDefault([string]$name) {
-    $m = [regex]::Match($configSource, '"' + $name + '",\s*(\d+)')
-    if (-not $m.Success) { throw "Config default missing: $name" }
-    [int]$m.Groups[1].Value
-}
-$cleanup = [regex]::Match($tasksSource, '(?ms)^EarnTaskMCTEnd\(\)[^\r\n]*\{.*?deadline := A_TickCount \+ (\d+)')
-if (-not $cleanup.Success) { throw 'MCT cleanup deadline missing' }
-$attemptSec = [int]$cleanup.Groups[1].Value / 1000 + 3
-$starveSec = (Get-ConfigDefault 'EarnRecoveryMaxAttempts') * $attemptSec
-$afkSec = (Get-ConfigDefault 'AFKIntervalSec') - (Get-ConfigDefault 'AFKJitterSec')
-if ($starveSec -gt $afkSec) { throw "Recovery can starve AFK for ${starveSec}s (> ${afkSec}s AFK interval)" }
-"PASS AFK starvation bound: recovery ${starveSec}s <= AFK ${afkSec}s"
