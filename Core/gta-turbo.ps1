@@ -425,7 +425,7 @@ public sealed class GtaFrameFeed {
     StreamWriter output;
     DateTime nextFile, nextFlush;
     int column = -1;
-    string header = "", rawPath = "", error = "";
+    string header = "", rawPath = "", error = "", etwStatus = "";
     long rows;
     DateTime lastFrame = DateTime.MinValue;
     DateTime lastOutput = DateTime.UtcNow;
@@ -447,6 +447,7 @@ public sealed class GtaFrameFeed {
     public bool Alive { get { try { return !ended && !process.HasExited; } catch { return false; } } }
     public string RawPath { get { lock(gate) { return rawPath; } } }
     public string LastError { get { lock(gate) { return error; } } }
+    public string EtwStatus { get { lock(gate) { return etwStatus; } } }
     public long Rows { get { lock(gate) { return rows; } } }
     public DateTime LastFrameUtc { get { lock(gate) { return lastFrame; } } }
     public DateTime LastOutputUtc { get { lock(gate) { return lastOutput; } } }
@@ -476,12 +477,16 @@ public sealed class GtaFrameFeed {
         try {
             string line;
             while ((line = process.StandardOutput.ReadLine()) != null) {
+                if (line.StartsWith("[ETW Status]", StringComparison.Ordinal)) {
+                    lock(gate) { etwStatus = line; }
+                    continue;
+                }
                 lock(gate) { lastOutput = DateTime.UtcNow; }
                 var cells = line.Split(',');
                 bool isHeader = Array.IndexOf(cells, "ProcessID") >= 0;
                 if (isHeader) {
                     header = line;
-                    column = Array.IndexOf(cells, "MsBetweenDisplayChange");
+                    column = Array.FindIndex(cells, value => String.Equals(value, "msBetweenDisplayChange", StringComparison.OrdinalIgnoreCase));
                     Preserve(line, true);
                     if (column < 0) throw new InvalidDataException("PresentMon header lacks MsBetweenDisplayChange; v1 metrics required: " + line);
                     continue;
@@ -525,17 +530,29 @@ function Test-FrameFeedStalled($Feed, [datetime]$NowUtc, [bool]$GameForeground) 
     return $GameForeground -and $Feed.Alive -and ($NowUtc - $Feed.LastOutputUtc).TotalSeconds -ge 60
 }
 
+function New-FrameFeed([int]$GameId) {
+    Initialize-FrameFeed
+    return [GtaFrameFeed]::new($script:PresentMon,
+        "--process_id $GameId --output_stdout --no_console_stats --v1_metrics --date_time --track_etw_status --stop_existing_session --session_name gta_perf",
+        (Join-Path $script:PerfDir 'frames'))
+}
+
 function Get-FrameFeed([bool]$Running) {
     if (-not $Running) {
         if ($script:FrameFeed) { $script:FrameFeed.Stop(); $script:FrameFeed = $null }
         return $null
+    }
+    $game = Get-Process -Name $script:Game -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $game) { return Get-FrameFeed $false }
+    if ($script:FrameFeed -and $script:FrameGameId -ne $game.Id) {
+        $script:FrameFeed.Stop(); $script:FrameFeed = $null
+        $script:NextFeedStart = [datetime]::MinValue
     }
     if ($script:FrameFeed -and $script:FrameFeed.Alive) {
         $foreground = $false
         if (([datetime]::UtcNow - $script:FrameFeed.LastOutputUtc).TotalSeconds -ge 60) {
             try {
                 $desktop = Get-ModeDesktopState
-                $game = Get-Process -Name $script:Game -ErrorAction Stop | Select-Object -First 1
                 $foreground = $desktop.Available -and $desktop.ProcessId -eq $game.Id
             } catch { }
         }
@@ -554,10 +571,8 @@ function Get-FrameFeed([bool]$Running) {
     if ($script:NextFeedStart -and (Get-Date) -lt $script:NextFeedStart) { return $null }
     $script:NextFeedStart = (Get-Date).AddSeconds(60)
     if (-not (Test-Path -LiteralPath $script:PresentMon)) { throw 'PresentMon executable missing' }
-    Initialize-FrameFeed
-    $script:FrameFeed = [GtaFrameFeed]::new($script:PresentMon,
-        "--process_name `"$($script:Game).exe`" --output_stdout --no_console_stats --v1_metrics --date_time --stop_existing_session --session_name gta_perf",
-        (Join-Path $script:PerfDir 'frames'))
+    $script:FrameFeed = New-FrameFeed $game.Id
+    $script:FrameGameId = $game.Id
     $script:FeedError = ''
     return $script:FrameFeed
 }
@@ -638,11 +653,13 @@ function Write-Perf([datetime]$Now = (Get-Date)) {
         feed_alive = [bool]($feed -and $feed.Alive)
         raw_path = $(if ($feed) { $feed.RawPath } else { $null })
         raw_rows = $(if ($feed) { $feed.Rows } else { 0 })
+        etw_status = $(if ($feed) { $feed.EtwStatus } else { $null })
         last_frame_utc = $(if ($feed -and $feed.LastFrameUtc -ne [datetime]::MinValue) { $feed.LastFrameUtc.ToString('o') } else { $null })
         last_output_utc = $(if ($feed) { $feed.LastOutputUtc.ToString('o') } else { $null })
     }
     Save-PerfStatus $status
-    if (-not $saved -or $fps -eq ',' -or $errors.Count) {
+    $etwLoss = $status.etw_status -match '(?:EventsLost|BuffersLost|OverflowedPresents)=[1-9][0-9]*'
+    if (-not $saved -or $fps -eq ',' -or $errors.Count -or $etwLoss) {
         Add-PerfLine (Join-Path $script:PerfDir 'health.jsonl') ($status | ConvertTo-Json -Depth 5 -Compress)
     }
 }

@@ -47,12 +47,14 @@ $reader = $null
 try {
     $body = @'
 [Console]::Out.WriteLine('Application,ProcessID,MsBetweenDisplayChange,CPUStartDateTime')
+[Console]::Out.WriteLine('[ETW Status] EventsLost=0')
 [Console]::Out.Flush()
 Start-Sleep -Milliseconds 500
 1..10 | ForEach-Object { [Console]::Out.WriteLine('fixture.exe,123,10,2026-10-19T23:59:59.100000000') }
 1..2 | ForEach-Object { [Console]::Out.WriteLine('fixture.exe,123,20,2026-10-19T23:59:59.200000000') }
 [Console]::Out.WriteLine('fixture.exe,123,NA,2026-10-19T23:59:59.300000000')
 [Console]::Out.WriteLine('fixture.exe,123,0,2026-10-19T23:59:59.400000000')
+[Console]::Out.WriteLine('[ETW Status] EventsLost=123')
 [Console]::Error.WriteLine('fixture stderr warning')
 [Console]::Out.Flush()
 [Console]::Error.Flush()
@@ -67,6 +69,8 @@ Start-Sleep -Milliseconds 500
 
     $raw = @([IO.File]::ReadAllLines($feed.RawPath))
     Check 'EOF flush preserves every valid, NA and zero frame while a reader is open' ($raw.Count -eq 15)
+    Check 'ETW status lines do not enter raw CSV or frame row count' ($feed.Rows -eq 14 -and -not ([IO.File]::ReadAllText($feed.RawPath).Contains('[ETW Status]')))
+    Check 'latest ETW status is available independently of frame data' ($feed.EtwStatus -ceq '[ETW Status] EventsLost=123')
     Check 'raw header retains source columns with capture timestamp' ($raw[0] -ceq 'CapturedAt,Application,ProcessID,MsBetweenDisplayChange,CPUStartDateTime')
     $sourceRows = @($raw | Select-Object -Skip 1 | ForEach-Object { $_.Substring($_.IndexOf(',') + 1) })
     Check 'valid source rows are preserved verbatim' (@($sourceRows | Where-Object { $_ -ceq 'fixture.exe,123,10,2026-10-19T23:59:59.100000000' }).Count -eq 10)
@@ -88,6 +92,23 @@ Start-Sleep -Milliseconds 500
     Wait-Condition { (Test-Path -LiteralPath $errorFile) -and ([IO.File]::ReadAllText($errorFile).Contains('fixture stderr warning')) } 'stderr persistence'
     Check 'stderr is available as feed error' ($feed.LastError.Contains('fixture stderr warning'))
     $feed = $null
+
+    $observedV1Header = 'Application,ProcessID,SwapChainAddress,Runtime,SyncInterval,PresentFlags,Dropped,TimeInSeconds,msInPresentAPI,msBetweenPresents,AllowsTearing,PresentMode,msUntilRenderComplete,msUntilDisplayed,msBetweenDisplayChange,msFlipDelay,msUntilRenderStart,msGPUActive,msSinceInput'
+    $observedLayoutRow = 'fixture.exe,123,0x1,DXGI,1,0,0,1.0,0.1,5,0,Hardware Composed: Independent Flip,4,6,10,0,1,3,NA'
+    $headerCases = @(
+        @{ Name = 'observed-v1-lowercase'; Header = $observedV1Header },
+        @{ Name = 'v1-mixed-case'; Header = $observedV1Header.Replace('msBetweenDisplayChange', 'mSbETWEENdISPLAYcHANGE') }
+    )
+    foreach ($headerCase in $headerCases) {
+        $body = "[Console]::Out.WriteLine('$($headerCase.Header)')`r`n1..10 | ForEach-Object { [Console]::Out.WriteLine('$observedLayoutRow') }"
+        $feed = Start-FixtureFeed $headerCase.Name $body
+        Wait-Condition { $feed.Rows -eq 10 -and -not $feed.Alive } "$($headerCase.Name) EOF"
+        $feed.Stop()
+        Check "$($headerCase.Name) uses display interval despite neighboring present interval" ((Format-Fps @($feed.Recent(10))) -ceq '100.0,100.0')
+        Check "$($headerCase.Name) preserves original header casing and all source columns" ([IO.File]::ReadAllLines($feed.RawPath)[0] -ceq ('CapturedAt,' + $headerCase.Header))
+        Check "$($headerCase.Name) is accepted without parser errors" ([string]::IsNullOrEmpty($feed.LastError))
+        $feed = $null
+    }
 
     $feed = Start-FixtureFeed 'unsupported' @'
 [Console]::Out.WriteLine('Application,ProcessID,FrameTime,DisplayedTime')
@@ -152,7 +173,47 @@ Start-Sleep -Seconds 10
     $health = @(Get-Content -LiteralPath (Join-Path $script:PerfDir 'health.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
     Check 'missing FPS produces explicit health even when sensors succeed' ($status.csv_saved -and -not $status.fps_available -and $health.Count -eq 2 -and -not $health[1].fps_available)
 
+    $etwReleasePath = Join-Path $FixtureDir 'release-etw.txt'
+    $body = @'
+$deadline = [datetime]::UtcNow.AddSeconds(5)
+while (-not [IO.File]::Exists('__RELEASE_PATH__')) {
+    if ([datetime]::UtcNow -gt $deadline) { exit 2 }
+    Start-Sleep -Milliseconds 10
+}
+[Console]::Out.WriteLine('[ETW Status] EventsLost=456')
+[Console]::Out.Flush()
+'@
+    $body = $body.Replace('__RELEASE_PATH__', $etwReleasePath.Replace("'", "''"))
+    $feed = Start-FixtureFeed 'etw-only' $body
+    $outputBeforeEtw = $feed.LastOutputUtc
+    [IO.File]::WriteAllText($etwReleasePath, 'release')
+    Wait-Condition { $feed.EtwStatus -ceq '[ETW Status] EventsLost=456' -and -not $feed.Alive } 'ETW-only fixture EOF'
+    $feed.Stop()
+    Check 'ETW status alone does not reset the frame output silence clock' ($feed.LastOutputUtc -eq $outputBeforeEtw)
+    Check 'ETW status before any frame does not create raw CSV or parser error' (
+        $feed.Rows -eq 0 -and [string]::IsNullOrEmpty($feed.RawPath) -and [string]::IsNullOrEmpty($feed.LastError)
+    )
+    $script:FrameFeed = $feed
+    Write-Perf ([datetime]'2026-10-20T00:00:25')
+    $status = Get-Content -LiteralPath (Join-Path $script:PerfDir 'status.json') -Raw | ConvertFrom-Json
+    $health = @(Get-Content -LiteralPath (Join-Path $script:PerfDir 'health.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
+    Check 'status retains ETW loss evidence with zero raw frames' ($status.raw_rows -eq 0 -and -not $status.fps_available -and $status.etw_status -ceq '[ETW Status] EventsLost=456')
+    Check 'health persists ETW loss evidence when FPS is missing' ($health[-1].etw_status -ceq '[ETW Status] EventsLost=456' -and $health[-1].raw_rows -eq 0)
+    $healthCountBeforePartialLoss = $health.Count
+    function Get-Fps { return '60.0,45.0' }
+    Write-Perf ([datetime]'2026-10-20T00:00:26')
+    $health = @(Get-Content -LiteralPath (Join-Path $script:PerfDir 'health.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
+    Check 'partial ETW loss persists in health despite available FPS and no sensor errors' (
+        $health.Count -eq $healthCountBeforePartialLoss + 1 -and $health[-1].fps_available -and
+        @($health[-1].errors).Count -eq 0 -and $health[-1].etw_status -ceq '[ETW Status] EventsLost=456'
+    )
+    function Get-Fps { return ',' }
+    $script:FrameFeed = $null
+    $feed = $null
+
     $script:Game = 'fixture-game'
+    $script:FixtureGameId = 123
+    $script:FrameGameId = 123
     $script:NextFeedStart = [datetime]::Now.AddMinutes(5)
     $script:RecoveryLogError = ''
     $script:FrameFeed = [pscustomobject]@{
@@ -165,7 +226,7 @@ Start-Sleep -Seconds 10
     function Get-Process {
         param([string]$Name, [string]$ErrorAction)
         if ($Name -ne 'fixture-game') { throw "Unexpected process lookup: $Name" }
-        return [pscustomobject]@{ Id = 123 }
+        if ($null -ne $script:FixtureGameId) { return [pscustomobject]@{ Id = $script:FixtureGameId } }
     }
     $reader = [IO.File]::Open((Join-Path $script:PerfDir 'health.jsonl'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
     $recoveryResult = Get-FrameFeed $true
@@ -177,6 +238,34 @@ Start-Sleep -Seconds 10
     Write-Perf ([datetime]'2026-10-20T00:00:30')
     $status = Get-Content -LiteralPath (Join-Path $script:PerfDir 'status.json') -Raw | ConvertFrom-Json
     Check 'status exposes recovery log failure while continuing CSV persistence' ($status.csv_saved -and $status.errors -contains $script:RecoveryLogError)
+
+    $script:PresentMon = $fixtureShell
+    $script:FixtureLaunchIds = New-Object 'System.Collections.Generic.List[int]'
+    function New-FrameFeed([int]$GameId) {
+        $script:FixtureLaunchIds.Add($GameId)
+        $createdFeed = [pscustomobject]@{
+            Alive = $true; LastOutputUtc = [datetime]::UtcNow; LastError = ''; Stopped = $false
+        }
+        $createdFeed | Add-Member -MemberType ScriptMethod -Name Stop -Value { $this.Alive = $false; $this.Stopped = $true }
+        return $createdFeed
+    }
+    $script:NextFeedStart = [datetime]::MinValue
+    $feed = Get-FrameFeed $true
+    Check 'collector factory receives the observed game PID' ($script:FixtureLaunchIds.Count -eq 1 -and $script:FixtureLaunchIds[0] -eq 123)
+    Check 'collector binds its running feed to the selected game PID' ($script:FrameGameId -eq 123)
+    $sameFeed = Get-FrameFeed $true
+    Check 'unchanged game PID retains the existing capture session without another factory call' ([object]::ReferenceEquals($feed, $sameFeed) -and $script:FixtureLaunchIds.Count -eq 1)
+
+    $previousFeed = $feed
+    $script:FixtureGameId = 456
+    $script:NextFeedStart = [datetime]::Now.AddMinutes(5)
+    $feed = Get-FrameFeed $true
+    Check 'changed game PID stops the old session and bypasses its cooldown' (-not $previousFeed.Alive -and $feed.Alive -and -not [object]::ReferenceEquals($previousFeed, $feed))
+    Check 'replacement session targets the new game PID' ($script:FrameGameId -eq 456 -and $script:FixtureLaunchIds.Count -eq 2 -and $script:FixtureLaunchIds[1] -eq 456)
+    $script:FixtureGameId = $null
+    $missingGameResult = Get-FrameFeed $true
+    Check 'disappearing game stops capture despite a stale running flag' ($null -eq $missingGameResult -and $null -eq $script:FrameFeed -and -not $feed.Alive)
+    $feed = $null
     $results | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $FixtureDir 'results.json') -Encoding UTF8
     Write-Output ("PASS: {0} assertions; fixtures: {1}" -f $results.Count, $FixtureDir)
 } finally {
