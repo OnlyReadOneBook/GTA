@@ -547,7 +547,7 @@ EarnSoftFail(reason, retryMin) {
 EarnFail(*) => false
 '@
     # 기준 시각이 없으면(F9·MCT 확인 이력 없음) 실제 함수가 입력 없이 false 를 돌려준다.
-    $mctDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`n"
+    $mctDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`nEarnMCTOpenBlind() => false`n"
     Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 10
     # 1020 녹화: MCT 곁에서 시선만 돌아간 경우. 기준 시각 뒤 물리 입력이 없을 때만 걷지 않고 45도씩 돈다.
     $turnDriver = @'
@@ -922,7 +922,7 @@ EarnTaskMCTEndWithManualRetry() => EarnTaskMCTEnd()
     $mctBeginCleanupDriver += "`n" + $mctCleanupSupport + "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd')
     $mctBeginCleanupDriver += "`nEarnSoftFail(reason, *) => EarnFail(reason)`n"
     $mctBeginCleanupDriver += "`nEarnMCTSpotSweep() => false`n"
-    $mctBeginCleanupDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`n"
+    $mctBeginCleanupDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`nEarnMCTOpenBlind() => false`n"
     Invoke-EarnOfflineCheck 'MCTBeginCleanup' 'EarnTaskMCTBegin' $mctBeginCleanupDriver 14
     $mctRefreshDriver = @'
 global refreshOptions := Map(), refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
