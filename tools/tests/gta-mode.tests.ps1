@@ -37,6 +37,7 @@ function Start-Sleep {
     if ($Milliseconds -eq 1200 -and $script:afterModeWait) { & $script:afterModeWait; $script:afterModeWait = $null }
 }
 try {
+    Initialize-GtaStageTrace -Component 'mode-test' -SourcePath (Join-Path $root 'Core\gta-turbo.ps1') -Directory $fixture
     Check ((Get-WantedGameMode $true) -eq 1) 'running GTA requires Turbo'
     Check ((Get-WantedGameMode $false) -eq 2) 'absent GTA requires Silent even on watcher startup'
     Check ((Get-WantedGameMode $true $true) -eq 2) 'idle GTA requires Silent'
@@ -324,9 +325,15 @@ try {
     $fpsSource = (Get-Command New-FrameFeed).Definition
     Check ($fpsSource -match '--output_stdout' -and $fpsSource -notmatch '--timed') 'FPS launch streams without a timed termination'
     $script:FrameFeed = $null; Check ($null -eq (Get-FrameFeed $false)) 'feed stops when game is not running'
+    $trace = @(Get-Content -LiteralPath (Join-Path $fixture 'mode-test.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
+    Check (@($trace | Where-Object { $_.stage -eq 'policy.observed' -and $_.data.sender_pid -eq 42 -and $_.data.signal_tick -eq 100000 }).Count -gt 0) 'observed policy ties its decision to validated sender and heartbeat tick'
+    Check (@($trace | Where-Object { $_.stage -eq 'ghelper.button.send' -and $_.phase -eq 'error' }).Count -gt 0) 'G-Helper failures retain the precise failing stage'
+    Check (@($trace | Where-Object { $_.stage -eq 'ghelper.verify' -and $_.phase -eq 'end' }).Count -gt 0) 'ACPI acknowledgement is traced separately from command delivery'
+    Check (@($trace | Where-Object { $_.stage -eq 'cpu.activate' -and $_.phase -eq 'end' }).Count -gt 0) 'CPU activation has a completion stage'
     Write-Output "PASS G-Helper process policy cases=$checks"
 } finally {
     # Fixture only, never the real game or user settings.
     Get-ChildItem -LiteralPath $fixture -File | Remove-Item
     Remove-Item -LiteralPath $fixture
 }
+& (Join-Path $PSScriptRoot 'gta-stage-trace.tests.ps1')

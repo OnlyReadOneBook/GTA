@@ -70,6 +70,10 @@ $ahk = & .\tools\ci\install-autohotkey.ps1 -Destination (Join-Path $ciDirectory 
 
 기존 시작 프로그램 `GTA Turbo.lnk`가 실행하던 `scripts\gta-turbo.ps1`의 정본은 이제 `Core/gta-turbo.ps1`이다. 해당 시작 항목의 실행 파일을 이 소스로 갱신해 사용한다. 기본 설정 경로는 `%USERPROFILE%\GTA\Config.ini`이며, 다른 위치에서는 `-MacroConfig`를 명시한다. G-Helper가 실행 중이어야 한다. 다른 모드 강제 프로그램과 동시에 실행하지 않는다.
 
+단계별 진단에는 `Core/gta-stage-trace.ps1`도 감시기와 같은 폴더에 배포한다. FPS helper 설치 스크립트는 두 파일을 RTSS 폴더에 함께 설치한다. `%USERPROFILE%\gta-perf\stage-trace\watcher.jsonl`과 `fps-helper.jsonl`에는 호출 전 `begin`, 정상 반환 `end`, 예외 `error`와 단조 시계 기반 `duration_ms`가 남는다. 각 행의 실행 ID, PID·시작 시각, 실행 파일 경로·SHA256으로 현재 실행을 구분한다. 파일당 8 MiB와 백업 3개로 제한하며 기록 실패는 제어에 전파하지 않는다. 모듈이 누락되면 제어는 계속되지만 단계 기록은 남지 않으므로 배포 뒤 현재 실행 ID의 새 행을 확인해야 한다.
+
+`policy.observed`는 감시기가 매크로의 복귀 신호를 읽은 시각과 송신 PID·tick이다. 실제 키 입력 시각과 같다고 해석하지 않는다. `fps.request.observed` 이후 RTSS의 load/set/save/update 각각을 확인하고, 반환값 `ok=false`를 정상 적용으로 해석하지 않는다. `begin`만 있고 종료 행이 없는 호출은 조사 후보이며 강제 종료·회전으로 기록이 빠진 경우와 구분한다. 이 기록은 다음 지연을 분해하기 위한 것으로 과거 지연의 원인을 소급 확정하지 않는다.
+
 - 감시 프로그램은 UI Automation으로 기존 G-Helper의 Silent·Balanced·Turbo 버튼을 식별한 뒤, 관측한 직접 부모에 표준 `WM_COMMAND/BN_CLICKED` 알림을 제한 시간과 함께 보낸다. UIA Invoke는 실기기에서 포커스 이동이 확인되어 사용하지 않는다. 숨겨진 창은 모니터 바깥에서 `ShowWindow(SW_SHOWNOACTIVATE)`로 지연 생성된 버튼까지 준비한 뒤 원래 위치와 숨김 상태로 되돌린다. 키·마우스 입력, 게임 전면화, GTA 재시작, GPU/MUX 변경은 사용하지 않는다. 버튼과 모든 부모의 활성 상태를 다시 확인하며, 확인창 때문에 비활성화됐거나 사용자가 G-Helper를 직접 조작하거나 보안 데스크톱이 열려 있으면 기다린다.
 - G-Helper 기본 모드 Silent·Turbo를 선택한다. 확인되지 않은 버튼은 추측하지 않고 오류를 기록한다. 설정 값과 새로운 ACPI 적용 로그의 `Mode = N : OK`를 함께 확인한다. 설정 값만 바뀐 상태는 완료가 아니다. 미확인 전환 요청은 5분에 한 번으로 제한한다.
 - GTA5_Enhanced가 실행 중이고 외출 상태가 아니면 Turbo, 자동·수동 외출 상태이거나 GTA가 없으면 Silent로 맞춘다. 사용자 입력으로 자동 외출이 해제되면 이전 모드와 관계없이 Turbo로 복귀한다. 감시 프로그램 시작·재시작 시에도 같은 정책을 적용하며, 유효한 자동 신호가 끊기면 자동 외출을 해제한다. 수동 외출 우선권과 CPU 부스트·30 FPS 정책은 유지한다.
