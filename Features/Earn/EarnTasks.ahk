@@ -509,7 +509,10 @@ EarnMCTTurnInPlace() {
         Loop 8 {
             if (!EarnTurn(step))
                 return false
-            if (EarnMCTSpotSeen() || EarnWaitSeen("mct_terrorbyte", "", 800)) {
+            ; 판정 한 번이 OCR 까지 돌면 13초 걸려 네 모드×여덟 방향이 7분이었다(1020 11:05~11:13). 회전 중에는 테러바이트 안내 템플릿만 본다.
+            if (!EarnSleep(300))
+                return false
+            if (EarnSeen("mct_terrorbyte")) {
                 EarnLog("MCT: 제자리 회전으로 접근 안내를 찾음 (카메라 모드 " mode "번째, " A_Index * 45 "도)")
                 return true
             }

@@ -568,7 +568,7 @@ EarnTurn(units, *) {
     turns += 1
     return true
 }
-EarnMCTSpotSeen() => promptAt && turns >= promptAt
+EarnSeen(*) => promptAt && turns >= promptAt
 EarnWaitSeen(*) => false
 EarnPress(*) => true
 EarnSleep(*) => true
