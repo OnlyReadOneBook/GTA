@@ -70,6 +70,10 @@ $ahk = & .\tools\ci\install-autohotkey.ps1 -Destination (Join-Path $ciDirectory 
 
 기존 시작 프로그램 `GTA Turbo.lnk`가 실행하던 `scripts\gta-turbo.ps1`의 정본은 이제 `Core/gta-turbo.ps1`이다. 해당 시작 항목의 실행 파일을 이 소스로 갱신해 사용한다. 기본 설정 경로는 `%USERPROFILE%\GTA\Config.ini`이며, 다른 위치에서는 `-MacroConfig`를 명시한다. G-Helper가 실행 중이어야 한다. 다른 모드 강제 프로그램과 동시에 실행하지 않는다.
 
+모드 제어와 성능 수집은 별도 PowerShell 프로세스에서 실행한다. 부모는 모드·FPS 요청과 CPU 정책을 처리하고, `-TelemetryOnly` 자식은 PresentMon·GPU·CPU 조회와 CSV/status 저장을 담당한다. 수집이 늦어져도 부모는 결과를 기다리지 않는다. 자식은 부모 PID와 시작 시각을 대조하고 Windows Job에 편입된 뒤 측정을 시작한다. 부모 종료 시 자식과 측정 하위 프로세스가 함께 종료되며, 수집기 종료 또는 120초간 heartbeat 정체가 확인되면 정리 후 30초 간격으로 다시 시작한다. collector mutex를 취득한 수집기만 기존 `gta_perf` ETW 세션을 회수한다.
+
+수집 단계는 `%USERPROFILE%\gta-perf\stage-trace\telemetry.jsonl`에 따로 기록한다. 부모의 `telemetry.started`와 자식의 `telemetry.owner`를 대조한다. 기존 성능 파일 위치·열은 유지하며 `status.json`의 `watcher_pid`는 부모, `collector_pid`는 수집기다. 모드 제어 자체의 G-Helper 확인·전력 적용이나 시스템 전체 자원 압박에 의한 지연은 별도로 남을 수 있다.
+
 단계별 진단에는 `Core/gta-stage-trace.ps1`도 감시기와 같은 폴더에 배포한다. FPS helper 설치 스크립트는 두 파일을 RTSS 폴더에 함께 설치한다. `%USERPROFILE%\gta-perf\stage-trace\watcher.jsonl`과 `fps-helper.jsonl`에는 호출 전 `begin`, 정상 반환 `end`, 예외 `error`와 단조 시계 기반 `duration_ms`가 남는다. 각 행의 실행 ID, PID·시작 시각, 실행 파일 경로·SHA256으로 현재 실행을 구분한다. 파일당 8 MiB와 백업 3개로 제한하며 기록 실패는 제어에 전파하지 않는다. 모듈이 누락되면 제어는 계속되지만 단계 기록은 남지 않으므로 배포 뒤 현재 실행 ID의 새 행을 확인해야 한다.
 
 `policy.observed`는 감시기가 매크로의 복귀 신호를 읽은 시각과 송신 PID·tick이다. 실제 키 입력 시각과 같다고 해석하지 않는다. `fps.request.observed` 이후 RTSS의 load/set/save/update 각각을 확인하고, 반환값 `ok=false`를 정상 적용으로 해석하지 않는다. `begin`만 있고 종료 행이 없는 호출은 조사 후보이며 강제 종료·회전으로 기록이 빠진 경우와 구분한다. 이 기록은 다음 지연을 분해하기 위한 것으로 과거 지연의 원인을 소급 확정하지 않는다.

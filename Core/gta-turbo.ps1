@@ -4,7 +4,11 @@
 [CmdletBinding()]
 param(
     [string]$MacroConfig = (Join-Path $env:USERPROFILE 'GTA\Config.ini'),
-    [switch]$LibraryOnly
+    [switch]$LibraryOnly,
+    [switch]$TelemetryOnly,
+    [int]$OwnerPid = 0,
+    [long]$OwnerStartTicks = 0,
+    [string]$ReadyEvent = ''
 )
 
 function Write-GtaStageEvent { param($Stage, $Data, $Phase, $SpanId, $Started, $ErrorMessage) }
@@ -550,6 +554,8 @@ function Test-FrameFeedStalled($Feed, [datetime]$NowUtc, [bool]$GameForeground) 
 
 function New-FrameFeed([int]$GameId) {
     Initialize-FrameFeed
+    # The collector mutex grants exclusive ownership. Reuse this name so the next
+    # owner can recover an ETW session left behind by a hard process-tree stop.
     return [GtaFrameFeed]::new($script:PresentMon,
         "--process_id $GameId --output_stdout --no_console_stats --v1_metrics --date_time --track_etw_status --stop_existing_session --session_name gta_perf",
         (Join-Path $script:PerfDir 'frames'))
@@ -666,7 +672,8 @@ function Write-Perf([datetime]$Now = (Get-Date)) {
     if ($script:RecoveryLogError) { $errors += $script:RecoveryLogError }
     if ($feed -and $feed.LastError) { $errors += $feed.LastError }
     $status = @{
-        time = (Get-Date).ToString('o'); watcher_pid = $PID; csv = $csv; csv_saved = $saved
+        time = (Get-Date).ToString('o'); watcher_pid = $(if ($script:OwnerPid -gt 0) { $script:OwnerPid } else { $PID })
+        collector_pid = $PID; csv = $csv; csv_saved = $saved
         fps_available = ($fps -ne ','); errors = @($errors)
         feed_alive = [bool]($feed -and $feed.Alive)
         raw_path = $(if ($feed) { $feed.RawPath } else { $null })
@@ -680,6 +687,146 @@ function Write-Perf([datetime]$Now = (Get-Date)) {
     if (-not $saved -or $fps -eq ',' -or $errors.Count -or $etwLoss) {
         Invoke-GtaTraceStage -Stage 'perf.health.write' -Action { Add-PerfLine (Join-Path $script:PerfDir 'health.jsonl') ($status | ConvertTo-Json -Depth 5 -Compress) }
     }
+}
+
+function Test-TelemetryOwner([int]$ProcessId, [long]$StartTicks) {
+    if ($ProcessId -le 0 -or $StartTicks -le 0) { return $false }
+    $owner = $null
+    try {
+        $owner = [Diagnostics.Process]::GetProcessById($ProcessId)
+        return -not $owner.HasExited -and $owner.StartTime.ToUniversalTime().Ticks -eq $StartTicks
+    } catch { return $false }
+    finally { if ($owner) { $owner.Dispose() } }
+}
+
+function Initialize-TelemetryJob {
+    if ('GtaTelemetryJob' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public sealed class GtaTelemetryJob : IDisposable {
+    [StructLayout(LayoutKind.Sequential)] struct Basic {
+        public long ProcessTime, JobTime;
+        public uint Flags;
+        public UIntPtr MinWorkingSet, MaxWorkingSet;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass, SchedulingClass;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct Counters {
+        public ulong ReadOperations, WriteOperations, OtherOperations, ReadBytes, WriteBytes, OtherBytes;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct Extended {
+        public Basic Basic;
+        public Counters Counters;
+        public UIntPtr ProcessMemory, JobMemory, PeakProcessMemory, PeakJobMemory;
+    }
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateJobObject(IntPtr security, string name);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job, int kind, ref Extended info, uint size);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    IntPtr job;
+    public Process Process { get; private set; }
+    public GtaTelemetryJob(string executable, string arguments) {
+        job = CreateJobObject(IntPtr.Zero, null);
+        if (job == IntPtr.Zero) throw new Win32Exception();
+        try {
+            var limits = new Extended(); limits.Basic.Flags = 0x2000; // KILL_ON_JOB_CLOSE
+            if (!SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(Extended)))) throw new Win32Exception();
+            var info = new ProcessStartInfo(executable, arguments);
+            info.UseShellExecute = false; info.CreateNoWindow = true;
+            Process = System.Diagnostics.Process.Start(info);
+            if (!AssignProcessToJobObject(job, Process.Handle)) throw new Win32Exception();
+        } catch {
+            // The startup event keeps this exact child from spawning any descendants before assignment.
+            if (Process != null) { try { if (!Process.HasExited) Process.Kill(); } catch {} Process.Dispose(); }
+            CloseHandle(job); job = IntPtr.Zero; throw;
+        }
+    }
+    public void Dispose() {
+        if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; }
+        if (Process != null) { Process.Dispose(); Process = null; }
+    }
+}
+'@
+}
+
+function Start-TelemetryWorker {
+    Initialize-TelemetryJob
+    $self = [Diagnostics.Process]::GetCurrentProcess()
+    try { $executable = $self.MainModule.FileName; $startTicks = $self.StartTime.ToUniversalTime().Ticks }
+    finally { $self.Dispose() }
+    $name = 'Local\GtaTelemetryReady-' + [guid]::NewGuid().ToString('N')
+    $gate = [Threading.EventWaitHandle]::new($false, [Threading.EventResetMode]::ManualReset, $name)
+    $job = $null
+    try {
+        $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -MacroConfig "{1}" -TelemetryOnly -OwnerPid {2} -OwnerStartTicks {3} -ReadyEvent "{4}"' -f $script:WatcherSourcePath, $script:MacroConfig, $PID, $startTicks, $name
+        $job = [GtaTelemetryJob]::new($executable, $arguments)
+        $script:TelemetryWorker = @{
+            Job = $job; Gate = $gate; Process = $job.Process
+            StartedUtc = [datetime]::UtcNow
+            Heartbeat = Join-Path $script:PerfDir ("collector-{0}.heartbeat" -f $job.Process.Id)
+        }
+        $null = $gate.Set()
+        Write-GtaStageEvent -Stage 'telemetry.started' -Data @{ collector_pid = $job.Process.Id; owner_pid = $PID }
+    } catch {
+        if ($job) { $job.Dispose() }
+        $gate.Dispose()
+        throw
+    }
+}
+
+function Stop-TelemetryWorker {
+    $worker = $script:TelemetryWorker
+    $script:TelemetryWorker = $null
+    if ($null -eq $worker) { return }
+    try { $worker.Job.Dispose() }
+    finally {
+        $worker.Gate.Dispose()
+        try { [IO.File]::Delete($worker.Heartbeat) } catch { }
+    }
+}
+
+function Sync-TelemetryWorker {
+    $now = [datetime]::UtcNow
+    $worker = $script:TelemetryWorker
+    if ($null -ne $worker) {
+        $alive = $false
+        try { $alive = -not $worker.Process.HasExited } catch { }
+        $last = $worker.StartedUtc
+        if ([IO.File]::Exists($worker.Heartbeat)) {
+            $written = [IO.File]::GetLastWriteTimeUtc($worker.Heartbeat)
+            if ($written -gt $last) { $last = $written }
+        }
+        if ($alive -and ($now - $last).TotalSeconds -lt 120) { return }
+        Write-GtaStageEvent -Stage 'telemetry.unhealthy' -Data @{ alive = $alive; heartbeat_age_seconds = ($now - $last).TotalSeconds }
+        Stop-TelemetryWorker
+        $script:NextTelemetryStart = $now.AddSeconds(30)
+    }
+    if ($now -lt $script:NextTelemetryStart) { return }
+    # Backoff is set before launch so a failing executable cannot create a tight retry loop.
+    $script:NextTelemetryStart = $now.AddSeconds(30)
+    Start-TelemetryWorker
+}
+
+function Invoke-ControlIteration([bool]$Running) {
+    Invoke-ModeCheck $Running
+    try { Invoke-GtaTraceStage -Stage 'cloudsync.check' -Action { Sync-CloudSync $Running } } catch { }
+    try { Invoke-GtaTraceStage -Stage 'telemetry.check' -Action { Sync-TelemetryWorker } }
+    catch { Write-GtaStageEvent -Stage 'telemetry.check' -Phase 'error' -ErrorMessage $_.Exception.Message }
+}
+
+function Invoke-TelemetryIteration([bool]$Running) {
+    try { $null = Invoke-GtaTraceStage -Stage 'framefeed.check' -Action { Get-FrameFeed $Running } }
+    catch { $script:FeedError = $_.Exception.Message }
+    if ($Running -and [datetime]::UtcNow -ge $script:NextTelemetrySample) {
+        $script:NextTelemetrySample = [datetime]::UtcNow.AddSeconds(10)
+        try { Invoke-GtaTraceStage -Stage 'perf.sample' -Action { Write-Perf } }
+        catch { Write-GtaStageEvent -Stage 'perf.sample' -Phase 'error' -ErrorMessage $_.Exception.Message }
+    }
+    [IO.File]::WriteAllText($script:TelemetryHeartbeat, [datetime]::UtcNow.ToString('o'))
 }
 
 if ($LibraryOnly) { return }
@@ -702,6 +849,43 @@ $script:FeedError = ''; $script:NextFeedStart = [datetime]::MinValue
 $script:PresentMon = Join-Path $env:USERPROFILE 'scripts\tools\PresentMon.exe'
 $script:Smi = 'utilization.gpu,temperature.gpu,power.draw,clocks.gr,memory.used,memory.total,clocks_throttle_reasons.active'
 $script:Header = 'time,fps_avg,fps_1pct_low,gpu_util_pct,gpu_temp_c,gpu_power_w,gpu_clock_mhz,vram_used_mb,vram_total_mb,throttle_reasons,cpu_util_pct,mode'
+$script:WatcherSourcePath = $PSCommandPath
+$script:NextTelemetryStart = [datetime]::MinValue
+$script:TelemetryWorker = $null
+if ($TelemetryOnly) {
+    if (-not (Test-TelemetryOwner $OwnerPid $OwnerStartTicks) -or -not $ReadyEvent) { throw 'Telemetry owner identity is required.' }
+    $gate = [Threading.EventWaitHandle]::OpenExisting($ReadyEvent)
+    try {
+        $readyDeadline = [datetime]::UtcNow.AddSeconds(30)
+        while (-not $gate.WaitOne(0)) {
+            if (-not (Test-TelemetryOwner $OwnerPid $OwnerStartTicks) -or [datetime]::UtcNow -ge $readyDeadline) { throw 'Telemetry owner did not assign the worker job.' }
+            Start-Sleep -Milliseconds 100
+        }
+    } finally { $gate.Dispose() }
+    $collectorMutex = [Threading.Mutex]::new($false, 'Local\GtaPerformanceCollector')
+    $collectorOwned = $false
+    try {
+        try { $collectorOwned = $collectorMutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $collectorOwned = $true }
+        if (-not $collectorOwned) { throw 'GTA telemetry collector already running.' }
+        $null = [IO.Directory]::CreateDirectory($script:PerfDir)
+        $script:TelemetryHeartbeat = Join-Path $script:PerfDir ("collector-{0}.heartbeat" -f $PID)
+        $script:NextTelemetrySample = [datetime]::MinValue
+        try { Initialize-GtaStageTrace -Component 'telemetry' -SourcePath $PSCommandPath } catch { }
+        Write-GtaStageEvent -Stage 'telemetry.owner' -Data @{ owner_pid = $OwnerPid; owner_start_ticks = $OwnerStartTicks; heartbeat = $script:TelemetryHeartbeat }
+        while (Test-TelemetryOwner $OwnerPid $OwnerStartTicks) {
+            Invoke-TelemetryIteration ([bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue))
+            Start-Sleep -Seconds 1
+        }
+    } finally {
+        if ($script:FrameFeed) { $script:FrameFeed.Stop() }
+        if ($collectorOwned) {
+            try { [IO.File]::Delete($script:TelemetryHeartbeat) } catch { }
+            $collectorMutex.ReleaseMutex()
+        }
+        $collectorMutex.Dispose()
+    }
+    return
+}
 $singleton = [Threading.Mutex]::new($false, 'Local\GtaPerformanceWatch')
 $owned = $false
 try {
@@ -713,27 +897,14 @@ try {
         ghelper_config = $script:Config; away_signal = $script:AwaySignalPath; fps_request = $script:FpsWantPath
     }
     New-Item -ItemType Directory -Force -Path $script:PerfDir | Out-Null
-    $nextPerf = [datetime]::MinValue; $lastModeError = ''; $lastPerfError = ''
+    $lastModeError = ''
     Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) watcher started pid=$PID config=$MacroConfig"
     while ($true) {
         $loopSpan = [guid]::NewGuid().ToString('N'); $loopStarted = [Diagnostics.Stopwatch]::GetTimestamp()
         Write-GtaStageEvent -Stage 'loop' -Phase 'begin' -SpanId $loopSpan
         try {
         $running = [bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue)
-        Invoke-ModeCheck $running
-        try { $null = Invoke-GtaTraceStage -Stage 'framefeed.check' -Action { Get-FrameFeed $running } } catch { $script:FeedError = $_.Exception.Message }
-        try { Invoke-GtaTraceStage -Stage 'cloudsync.check' -Action { Sync-CloudSync $running } } catch { }
-        # A control failure must not stop telemetry, and a measurement failure must not stop control.
-        if ($running -and (Get-Date) -ge $nextPerf) {
-            $nextPerf = (Get-Date).AddSeconds(10)
-            try { Invoke-GtaTraceStage -Stage 'perf.sample' -Action { Write-Perf }; $lastPerfError = '' }
-            catch {
-                if ($lastPerfError -ne $_.Exception.Message) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) telemetry failed: $($_.Exception.Message)" }
-                $lastPerfError = $_.Exception.Message
-            }
-            # A user can return during the two-second frame sample.
-            Invoke-ModeCheck ([bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue))
-        }
+        Invoke-ControlIteration $running
         } catch {
             Write-GtaStageEvent -Stage 'loop' -Phase 'error' -SpanId $loopSpan -Started $loopStarted -ErrorMessage $_.Exception.Message
             throw
@@ -743,7 +914,7 @@ try {
         Start-Sleep -Seconds 1
     }
 } finally {
-    if ($script:FrameFeed) { $script:FrameFeed.Stop() }
+    Stop-TelemetryWorker
     if ($owned) { try { Set-CloudSyncPaused $false } catch { } }
     if ($owned) { $singleton.ReleaseMutex() }
     $singleton.Dispose()

@@ -337,3 +337,6 @@ try {
     Remove-Item -LiteralPath $fixture
 }
 & (Join-Path $PSScriptRoot 'gta-stage-trace.tests.ps1')
+$testHost = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+& $testHost -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'telemetry-isolation.tests.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Telemetry isolation suite failed in its clean process.' }
