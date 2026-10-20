@@ -525,13 +525,14 @@ EarnMCTTurnInPlace() {
 ; 안내를 못 찾아도 F9 를 켰거나 MCT 를 확인한 이력이 있으면 여는 키를 그냥 눌러 본다(1020 사용자 지시).
 ; 테러바이트 MCT 는 Space 로 연다(E 는 테러바이트 의자용이라 누르지 않는다). 안 열리면 실패로 넘긴다.
 EarnMCTOpenBlind() {
-    global gEarnMCTSeenTick
+    global gEarnMCTSeenTick, gEarnMCTOpenKind
     if (!IsSet(gEarnMCTSeenTick) || !gEarnMCTSeenTick)
         return false
     for key in ["Space"] {
         if (!EarnPress(key))
             return false
         if (EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 6000) || EarnSeen("mct_seated", [0,0,0.3,0.1])) {
+            gEarnMCTOpenKind := "terrorbyte"
             EarnLog("MCT: 안내 없이 " key " 로 열림")
             return true
         }
