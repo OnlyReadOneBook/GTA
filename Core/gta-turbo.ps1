@@ -415,35 +415,93 @@ function Sync-CloudSync([bool]$Running) {
 function Initialize-FrameFeed {
     if ('GtaFrameFeed' -as [type]) { return }
     Add-Type -TypeDefinition @'
-using System; using System.Collections.Generic; using System.Diagnostics; using System.Globalization;
+using System; using System.Collections.Generic; using System.Diagnostics; using System.Globalization; using System.IO;
 public sealed class GtaFrameFeed {
     readonly object gate = new object();
     readonly Queue<KeyValuePair<long, double>> frames = new Queue<KeyValuePair<long, double>>();
     readonly Process process;
+    readonly string directory;
+    readonly System.Threading.Thread reader;
+    StreamWriter output;
+    DateTime nextFile, nextFlush;
     int column = -1;
-    public GtaFrameFeed(string exe, string args) {
+    string header = "", rawPath = "", error = "";
+    long rows;
+    DateTime lastFrame = DateTime.MinValue;
+    DateTime lastOutput = DateTime.UtcNow;
+    volatile bool ended;
+    public GtaFrameFeed(string exe, string args, string rawDirectory) {
+        directory = rawDirectory;
+        Directory.CreateDirectory(directory);
         var info = new ProcessStartInfo(exe, args);
         info.UseShellExecute = false; info.CreateNoWindow = true;
         info.RedirectStandardOutput = true; info.RedirectStandardError = true;
         process = Process.Start(info);
-        process.ErrorDataReceived += delegate { };
+        process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) {
+            if (!String.IsNullOrWhiteSpace(e.Data)) RecordError(e.Data);
+        };
         process.BeginErrorReadLine();
-        var reader = new System.Threading.Thread(Read);
+        reader = new System.Threading.Thread(Read);
         reader.IsBackground = true; reader.Start();
     }
-    public bool Alive { get { try { return !process.HasExited; } catch { return false; } } }
+    public bool Alive { get { try { return !ended && !process.HasExited; } catch { return false; } } }
+    public string RawPath { get { lock(gate) { return rawPath; } } }
+    public string LastError { get { lock(gate) { return error; } } }
+    public long Rows { get { lock(gate) { return rows; } } }
+    public DateTime LastFrameUtc { get { lock(gate) { return lastFrame; } } }
+    public DateTime LastOutputUtc { get { lock(gate) { return lastOutput; } } }
+    void RecordError(string message) {
+        lock(gate) {
+            error = message;
+            try { File.AppendAllText(Path.Combine(directory, "errors.log"), DateTimeOffset.Now.ToString("o") + " " + message + Environment.NewLine); }
+            catch { }
+        }
+    }
+    void Preserve(string line, bool isHeader) {
+        var now = DateTime.Now;
+        if (output == null || now >= nextFile) {
+            if (output != null) output.Dispose();
+            var day = Path.Combine(directory, now.ToString("yyyyMMdd"));
+            Directory.CreateDirectory(day);
+            var path = Path.Combine(day, now.ToString("HHmmss") + "-" + Guid.NewGuid().ToString("N") + ".csv");
+            output = new StreamWriter(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite));
+            lock(gate) { rawPath = path; }
+            nextFile = now.AddMinutes(10); nextFlush = now;
+            output.WriteLine("CapturedAt," + header);
+        }
+        if (!isHeader) output.WriteLine(DateTimeOffset.Now.ToString("o") + "," + line);
+        if (now >= nextFlush) { output.Flush(); nextFlush = now.AddSeconds(1); }
+    }
     void Read() {
-        string line;
-        while ((line = process.StandardOutput.ReadLine()) != null) {
-            var cells = line.Split(',');
-            if (column < 0) { column = Array.IndexOf(cells, "MsBetweenDisplayChange"); continue; }
-            double ms;
-            if (column >= cells.Length || !double.TryParse(cells[column], NumberStyles.Float, CultureInfo.InvariantCulture, out ms) || ms <= 0) { continue; }
-            long now = Stopwatch.GetTimestamp();
-            lock (gate) {
-                frames.Enqueue(new KeyValuePair<long, double>(now, ms));
-                while (frames.Count > 0 && now - frames.Peek().Key > Stopwatch.Frequency * 10) { frames.Dequeue(); }
+        try {
+            string line;
+            while ((line = process.StandardOutput.ReadLine()) != null) {
+                lock(gate) { lastOutput = DateTime.UtcNow; }
+                var cells = line.Split(',');
+                bool isHeader = Array.IndexOf(cells, "ProcessID") >= 0;
+                if (isHeader) {
+                    header = line;
+                    column = Array.IndexOf(cells, "MsBetweenDisplayChange");
+                    Preserve(line, true);
+                    if (column < 0) throw new InvalidDataException("PresentMon header lacks MsBetweenDisplayChange; v1 metrics required: " + line);
+                    continue;
+                }
+                if (column < 0) { RecordError("Before CSV header: " + line); continue; }
+                Preserve(line, false);
+                lock(gate) { rows++; }
+                double ms;
+                if (column >= cells.Length || !double.TryParse(cells[column], NumberStyles.Float, CultureInfo.InvariantCulture, out ms) || ms <= 0) continue;
+                long now = Stopwatch.GetTimestamp();
+                lock (gate) {
+                    lastFrame = DateTime.UtcNow;
+                    frames.Enqueue(new KeyValuePair<long, double>(now, ms));
+                    while (frames.Count > 0 && now - frames.Peek().Key > Stopwatch.Frequency * 10) frames.Dequeue();
+                }
             }
+        } catch(Exception e) { RecordError(e.ToString()); }
+        finally {
+            try { if (output != null) output.Dispose(); } catch(Exception e) { RecordError(e.ToString()); }
+            ended = true;
         }
     }
     public double[] Recent(double seconds) {
@@ -452,23 +510,52 @@ public sealed class GtaFrameFeed {
         lock (gate) { foreach (var frame in frames) { if (frame.Key >= cutoff) { result.Add(frame.Value); } } }
         return result.ToArray();
     }
-    public void Stop() { try { if (!process.HasExited) { process.Kill(); } } catch { } }
+    public void Stop() {
+        try { if (!process.HasExited) process.Kill(); } catch { }
+        reader.Join(3000);
+        if (!reader.IsAlive) process.Dispose();
+    }
 }
 '@
 }
 
 # One long-lived ETW session. Starting a PresentMon session per sample made the
 # game hitch for 60-290 ms every telemetry interval (1019 measurement).
+function Test-FrameFeedStalled($Feed, [datetime]$NowUtc, [bool]$GameForeground) {
+    return $GameForeground -and $Feed.Alive -and ($NowUtc - $Feed.LastOutputUtc).TotalSeconds -ge 60
+}
+
 function Get-FrameFeed([bool]$Running) {
     if (-not $Running) {
         if ($script:FrameFeed) { $script:FrameFeed.Stop(); $script:FrameFeed = $null }
         return $null
     }
-    if ($script:FrameFeed -and $script:FrameFeed.Alive) { return $script:FrameFeed }
-    if (-not (Test-Path -LiteralPath $script:PresentMon)) { return $null }
+    if ($script:FrameFeed -and $script:FrameFeed.Alive) {
+        $foreground = $false
+        if (([datetime]::UtcNow - $script:FrameFeed.LastOutputUtc).TotalSeconds -ge 60) {
+            try {
+                $desktop = Get-ModeDesktopState
+                $game = Get-Process -Name $script:Game -ErrorAction Stop | Select-Object -First 1
+                $foreground = $desktop.Available -and $desktop.ProcessId -eq $game.Id
+            } catch { }
+        }
+        if (-not (Test-FrameFeedStalled $script:FrameFeed ([datetime]::UtcNow) $foreground)) { return $script:FrameFeed }
+        Add-PerfLine (Join-Path $script:PerfDir 'health.jsonl') (@{
+            time = (Get-Date).ToString('o'); error = 'PresentMon stdout stalled for 60 seconds while game was foreground; restarting'
+        } | ConvertTo-Json -Compress)
+    }
+    if ($script:FrameFeed) {
+        $script:FeedError = $script:FrameFeed.LastError
+        $script:FrameFeed.Stop(); $script:FrameFeed = $null
+    }
+    if ($script:NextFeedStart -and (Get-Date) -lt $script:NextFeedStart) { return $null }
+    $script:NextFeedStart = (Get-Date).AddSeconds(60)
+    if (-not (Test-Path -LiteralPath $script:PresentMon)) { throw 'PresentMon executable missing' }
     Initialize-FrameFeed
     $script:FrameFeed = [GtaFrameFeed]::new($script:PresentMon,
-        "--process_name `"$($script:Game).exe`" --output_stdout --no_console_stats --stop_existing_session --session_name gta_perf")
+        "--process_name `"$($script:Game).exe`" --output_stdout --no_console_stats --v1_metrics --date_time --stop_existing_session --session_name gta_perf",
+        (Join-Path $script:PerfDir 'frames'))
+    $script:FeedError = ''
     return $script:FrameFeed
 }
 
@@ -486,22 +573,82 @@ function Format-Fps([double[]]$ms) {
     return [string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:F1},{1:F1}', $avg, $low)
 }
 
-function Write-Perf {
-    $csv = Join-Path $script:PerfDir "$(Get-Date -Format yyyyMMdd).csv"
-    if ((Test-Path -LiteralPath $csv) -and ((Get-Content -LiteralPath $csv -TotalCount 1) -ne $script:Header)) {
-        Rename-Item -LiteralPath $csv -NewName ([IO.Path]::GetFileNameWithoutExtension($csv) + "-old$(Get-Date -Format HHmmss).csv")
+function Add-PerfLine([string]$Path, [string]$Line, [string]$Header = '') {
+    # Readers and the writer must be able to overlap without dropping a sample.
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+    $writer = $null
+    try {
+        $empty = $stream.Length -eq 0
+        $null = $stream.Seek(0, [IO.SeekOrigin]::End)
+        $writer = [IO.StreamWriter]::new($stream, [Text.UTF8Encoding]::new($false))
+        if ($empty -and $Header) { $writer.WriteLine($Header) }
+        $writer.WriteLine($Line)
+    } finally { if ($writer) { $writer.Dispose() } else { $stream.Dispose() } }
+}
+
+function Read-PerfGpu {
+    $info = [Diagnostics.ProcessStartInfo]::new('nvidia-smi', "--query-gpu=$script:Smi --format=csv,noheader,nounits")
+    $info.UseShellExecute = $false; $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true
+    $process = [Diagnostics.Process]::Start($info)
+    try {
+        $output = $process.StandardOutput.ReadToEndAsync(); $errorOutput = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(3000)) { $process.Kill(); throw 'nvidia-smi timed out after 3 seconds' }
+        if ($process.ExitCode -ne 0) { throw $errorOutput.GetAwaiter().GetResult() }
+        $line = ($output.GetAwaiter().GetResult() -split '[\r\n]+' | Where-Object { $_ } | Select-Object -First 1) -replace '\s', ''
+        if (($line -split ',').Count -ne 7) { throw 'Unexpected nvidia-smi column count' }
+        return $line
+    } finally { $process.Dispose() }
+}
+
+function Read-PerfCpu {
+    return [math]::Round((Get-CimInstance Win32_Processor -OperationTimeoutSec 3 | Measure-Object LoadPercentage -Average).Average)
+}
+
+function Save-PerfStatus($Status) {
+    $path = Join-Path $script:PerfDir 'status.json'
+    $temp = $path + '.' + $PID + '.tmp'
+    [IO.File]::WriteAllText($temp, ($Status | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    if (Test-Path -LiteralPath $path) { [IO.File]::Replace($temp, $path, [NullString]::Value) }
+    else { [IO.File]::Move($temp, $path) }
+}
+
+function Write-Perf([datetime]$Now = (Get-Date)) {
+    $errors = @(); $fps = ','; $gpu = ',,,,,,'; $cpu = ''; $mode = ''
+    try { $fps = Get-Fps } catch { $errors += 'frames: ' + $_.Exception.Message }
+    try { $gpu = Read-PerfGpu } catch { $errors += 'gpu: ' + $_.Exception.Message }
+    try { $cpu = Read-PerfCpu } catch { $errors += 'cpu: ' + $_.Exception.Message }
+    try { $mode = Get-Mode } catch { $errors += 'mode: ' + $_.Exception.Message }
+    $csv = Join-Path $script:PerfDir ($Now.ToString('yyyyMMdd') + '.csv')
+    $saved = $false
+    try {
+        Add-PerfLine $csv ($Now.ToString('s') + ",$fps,$gpu,$cpu,$mode") $script:Header
+        $saved = $true
+    } catch { $errors += 'csv: ' + $_.Exception.Message }
+    $feed = $script:FrameFeed
+    if ($script:FeedError) { $errors += $script:FeedError }
+    if ($feed -and $feed.LastError) { $errors += $feed.LastError }
+    $status = @{
+        time = (Get-Date).ToString('o'); watcher_pid = $PID; csv = $csv; csv_saved = $saved
+        fps_available = ($fps -ne ','); errors = @($errors)
+        feed_alive = [bool]($feed -and $feed.Alive)
+        raw_path = $(if ($feed) { $feed.RawPath } else { $null })
+        raw_rows = $(if ($feed) { $feed.Rows } else { 0 })
+        last_frame_utc = $(if ($feed -and $feed.LastFrameUtc -ne [datetime]::MinValue) { $feed.LastFrameUtc.ToString('o') } else { $null })
+        last_output_utc = $(if ($feed) { $feed.LastOutputUtc.ToString('o') } else { $null })
     }
-    if (-not (Test-Path -LiteralPath $csv)) { Add-Content -LiteralPath $csv $script:Header }
-    $fps = Get-Fps
-    $gpu = (& nvidia-smi --query-gpu=$script:Smi --format=csv,noheader,nounits 2>$null) -replace '\s', ''
-    $cpu = [math]::Round((Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average)
-    $mode = try { Get-Mode } catch { '' }
-    Add-Content -LiteralPath $csv "$(Get-Date -Format s),$fps,$gpu,$cpu,$mode"
+    Save-PerfStatus $status
+    if (-not $saved -or $fps -eq ',' -or $errors.Count) {
+        Add-PerfLine (Join-Path $script:PerfDir 'health.jsonl') ($status | ConvertTo-Json -Depth 5 -Compress)
+    }
 }
 
 if ($LibraryOnly) { return }
 
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSEdition -eq 'Desktop') {
+    $env:PSModulePath = (Join-Path $PSHOME 'Modules') + ';' + (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules')
+}
 $script:Game = 'GTA5_Enhanced'
 $script:Config = Join-Path $env:APPDATA 'GHelper\config.json'
 $script:AwaySignalPath = Join-Path $env:USERPROFILE '.gta-away-want'
@@ -511,7 +658,8 @@ $script:CpuPolicyKey = ''
 # mid-game resumes iCloud on its next run.
 $script:CloudPaused = $null
 $script:Log = Join-Path $env:LOCALAPPDATA 'gta-turbo.log'
-$script:PerfDir = Join-Path $env:LOCALAPPDATA 'gta-perf'
+$script:PerfDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'gta-perf'
+$script:FeedError = ''; $script:NextFeedStart = [datetime]::MinValue
 $script:PresentMon = Join-Path $env:USERPROFILE 'scripts\tools\PresentMon.exe'
 $script:Smi = 'utilization.gpu,temperature.gpu,power.draw,clocks.gr,memory.used,memory.total,clocks_throttle_reasons.active'
 $script:Header = 'time,fps_avg,fps_1pct_low,gpu_util_pct,gpu_temp_c,gpu_power_w,gpu_clock_mhz,vram_used_mb,vram_total_mb,throttle_reasons,cpu_util_pct,mode'
@@ -526,7 +674,7 @@ try {
     while ($true) {
         $running = [bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue)
         Invoke-ModeCheck $running
-        try { $null = Get-FrameFeed $running } catch { }
+        try { $null = Get-FrameFeed $running } catch { $script:FeedError = $_.Exception.Message }
         try { Sync-CloudSync $running } catch { }
         # A control failure must not stop telemetry, and a measurement failure must not stop control.
         if ($running -and (Get-Date) -ge $nextPerf) {

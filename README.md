@@ -394,6 +394,10 @@ F11 작텔은 작업 시작과 종료창의 마지막 대기까지 End와 게임
 
 프레임 급락 감시는 `tools\frame-watch\install.ps1`로 설치한다. 기존 FPS 기록에 전면 상태와 GPU 메모리를 붙이고 급락 전후 자료를 보존한다. [감지 기준과 기록 확인](tools/frame-watch/README.md)을 따른다.
 
+FPS 공급기는 PresentMon v1 출력 형식을 명시하고 하나의 ETW 세션을 유지한다. `%LOCALAPPDATA%\gta-perf\frames\YYYYMMDD\`에 수신 시각 `CapturedAt`을 붙인 원본 CSV를 10분 단위로 보존하며, 유효 FPS 계산에서 제외한 NA 프레임도 남긴다. 원본은 약 1초마다 디스크로 내보내고 자동 삭제하지 않는다. 강제 종료 직전의 버퍼나 저장 장치 장애까지 무손실을 보장하지는 않는다. 디스크 여유 공간과 자료 보존 기간은 운영자가 관리한다.
+
+같은 폴더의 `status.json`은 마지막 요약 저장 시각·성공 여부, 원본 경로·행 수, 마지막 출력·유효 프레임 시각과 오류를 표시한다. 빈 FPS나 센서·저장 오류는 `health.jsonl`, PresentMon stderr와 헤더·원본 저장 실패는 `frames\errors.log`에 남는다. 헤더가 맞지 않거나 수집기가 종료되면 최대 분당 한 번 재시작한다. 게임이 전면인데 stdout이 60초 이상 멈춘 경우에도 재시작하며, 백그라운드의 무출력은 상태만 기록한다. 센서 조회 실패가 정상 FPS 행의 저장을 막지 않는다. 날짜별 요약은 행 시각과 같은 날짜 파일에 기록한다. 입력 없는 회귀검사는 `tools\tests\frame-feed.tests.ps1`이다.
+
 | 파일 | 내용 |
 |---|---|
 | `%TEMP%\gta-macro.log` | 공통. `[jobwarp]` `[botwarp]` `[session]` `[menu]` `[hotkey]` `[config]` `[stop]` `[panel]` `[screen]` `[error]` |
