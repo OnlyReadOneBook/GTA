@@ -7,6 +7,10 @@ param(
     [switch]$LibraryOnly
 )
 
+function Write-GtaStageEvent { param($Stage, $Data, $Phase, $SpanId, $Started, $ErrorMessage) }
+function Invoke-GtaTraceStage { param($Stage, [scriptblock]$Action, $Data); & $Action }
+try { . (Join-Path $PSScriptRoot 'gta-stage-trace.ps1') } catch { }
+
 function Read-ModeSettings([string]$Path) {
     $section = ''; $values = @(); $automatic = @()
     foreach ($line in [IO.File]::ReadAllLines($Path)) {
@@ -59,6 +63,12 @@ function Get-WantedModePolicy {
     $signal = Read-AwaySignal $script:AwaySignalPath
     $away = $settings.Manual -or ($settings.Automatic -and $null -ne $signal -and $signal.AutoAway)
     $cpuWanted = if ($away) { $false } elseif ($null -ne $signal) { $signal.CpuWanted } else { $true }
+    Write-GtaStageEvent -Stage 'policy.observed' -Data @{
+        away = $away; cpu_wanted = [bool]$cpuWanted; manual = $settings.Manual
+        automatic = $settings.Automatic; signal_valid = ($null -ne $signal)
+        sender_pid = $(if ($null -ne $signal) { $signal.SenderId } else { $null })
+        signal_tick = $(if ($null -ne $signal) { $signal.Tick } else { $null })
+    }
     return @{ Away = $away; CpuWanted = [bool]$cpuWanted;
         Manual = $settings.Manual; Automatic = $settings.Automatic; SignalValid = ($null -ne $signal) }
 }
@@ -100,7 +110,7 @@ function Get-Mode {
 
 function Invoke-ModeTick([bool]$Running) {
     try {
-        $fps = Sync-AwayFpsPolicy
+        $fps = Invoke-GtaTraceStage -Stage 'fps.synchronize' -Action { Sync-AwayFpsPolicy }
         if ($null -ne $fps) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) away FPS request=$fps synchronized" }
         $script:LastFpsReleaseError = ''
     } catch {
@@ -109,7 +119,7 @@ function Invoke-ModeTick([bool]$Running) {
     }
     $away = if ($Running) { (Get-WantedModePolicy).Away } else { $false }
     $target = Get-WantedGameMode $Running $away
-    $changed = Set-GHelperMode $target
+    $changed = Invoke-GtaTraceStage -Stage 'mode.set' -Data @{ target = $target; running = $Running; away = $away } -Action { Set-GHelperMode $target }
     if ($changed) {
         $script:CpuPolicyKey = ''
         Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode=$target running=$Running applied"
@@ -256,7 +266,7 @@ public static class GtaModeWindow {
 }
 
 function Invoke-ModeCheck([bool]$Running) {
-    try { Invoke-ModeTick $Running; $script:LastModeError = '' }
+    try { Invoke-GtaTraceStage -Stage 'mode.tick' -Data @{ running = $Running } -Action { Invoke-ModeTick $Running }; $script:LastModeError = '' }
     catch {
         if ($script:LastModeError -ne $_.Exception.Message) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode pending: $($_.Exception.Message)" }
         $script:LastModeError = $_.Exception.Message
@@ -311,23 +321,23 @@ function Invoke-ModeButton($Button) { [GtaModeWindow]::ClickButton($Button.Windo
 function Invoke-GHelperModeButton([int]$Target, $Helper) {
     $before = Get-ModeDesktopState
     if (-not $before.Available -or $before.ProcessId -eq $Helper.Id) { throw 'Desktop unavailable or G-Helper is being used; deferring mode change.' }
-    $window = Get-ModeSettingsWindow $Helper
+    $window = Invoke-GtaTraceStage -Stage 'ghelper.window.find' -Data @{ target = $Target; helper_pid = $Helper.Id } -Action { Get-ModeSettingsWindow $Helper }
     $prepared = $false; $invoked = $false; $trace = @("before=$($before.Foreground)")
     try {
-        if (-not $window.Visible) { $prepared = $true; Prepare-ModeSettingsWindow $window }
-        $button = Get-ModeButton $window $Target
+        if (-not $window.Visible) { $prepared = $true; Invoke-GtaTraceStage -Stage 'ghelper.window.prepare' -Action { Prepare-ModeSettingsWindow $window } }
+        $button = Invoke-GtaTraceStage -Stage 'ghelper.button.find' -Data @{ target = $Target } -Action { Get-ModeButton $window $Target }
         $ready = Get-ModeDesktopState; $trace += "ready=$($ready.Foreground)"
         if (-not $ready.Available -or $ready.Foreground -ne $before.Foreground) { throw 'Foreground changed before G-Helper invocation; deferred without input.' }
         $currentHelper = Get-Process -Id $Helper.Id -ErrorAction Stop
         if ($currentHelper.StartTime.Ticks -ne $Helper.StartTime.Ticks) { throw 'G-Helper process identity changed.' }
         $script:LastModeAttemptKey = "$($Helper.Id):$($Helper.StartTime.Ticks):$Target"
         $script:NextModeAttempt = (Get-Date).AddMinutes(5)
-        Invoke-ModeButton $button
+        Invoke-GtaTraceStage -Stage 'ghelper.button.send' -Data @{ target = $Target; helper_pid = $Helper.Id } -Action { Invoke-ModeButton $button }
         $invoked = $true
         $after = Get-ModeDesktopState; $trace += "invoked=$($after.Foreground)"
         if ($after.Foreground -ne $before.Foreground) { throw 'Foreground changed during G-Helper invocation; no focus restoration attempted.' }
     } finally {
-        try { if ($prepared) { Restore-ModeSettingsWindow $window } }
+        try { if ($prepared) { Invoke-GtaTraceStage -Stage 'ghelper.window.restore' -Action { Restore-ModeSettingsWindow $window } } }
         finally {
             $final = Get-ModeDesktopState; $trace += "final=$($final.Foreground)"
             Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode request target=$Target invoked=$invoked foreground $($trace -join ' ')"
@@ -356,17 +366,19 @@ function Set-GHelperMode([int]$Target) {
     $script:ModeAttemptLogBefore = $existingLog
     Invoke-GHelperModeButton $Target $helpers[0]
     # A config write precedes ACPI completion. Require a NEW final successful ACPI record too.
-    $deadline = (Get-Date).AddSeconds(8)
-    do {
-        Start-Sleep -Milliseconds 250
-        $text = [IO.File]::ReadAllText($helperLog)
-        $tail = if ($text.StartsWith($existingLog)) { $text.Substring($existingLog.Length) } else { $text }
-        if ((Get-Mode) -eq $Target -and (Test-ModeApplied $tail $Target)) {
-            $script:LastModeAttemptKey = ''
-            return $true
-        }
-    } while ((Get-Date) -lt $deadline)
-    throw "G-Helper mode $Target is not confirmed by configuration and ACPI log."
+    return Invoke-GtaTraceStage -Stage 'ghelper.verify' -Data @{ target = $Target; helper_pid = $helpers[0].Id } -Action {
+        $deadline = (Get-Date).AddSeconds(8)
+        do {
+            Start-Sleep -Milliseconds 250
+            $text = [IO.File]::ReadAllText($helperLog)
+            $tail = if ($text.StartsWith($existingLog)) { $text.Substring($existingLog.Length) } else { $text }
+            if ((Get-Mode) -eq $Target -and (Test-ModeApplied $tail $Target)) {
+                $script:LastModeAttemptKey = ''
+                return $true
+            }
+        } while ((Get-Date) -lt $deadline)
+        throw "G-Helper mode $Target is not confirmed by configuration and ACPI log."
+    }
 }
 
 function Set-ModeCpuPolicy([bool]$Enabled) {
@@ -374,13 +386,19 @@ function Set-ModeCpuPolicy([bool]$Enabled) {
     foreach ($supply in @('ac', 'dc')) {
         $maximum = if ($Enabled) { 100 } else { 99 }
         $boost = if (-not $Enabled) { 0 } elseif ($supply -eq 'ac') { 2 } else { 1 }
-        & powercfg "/set${supply}valueindex" SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX $maximum | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw 'Could not apply CPU maximum.' }
-        & powercfg "/set${supply}valueindex" SCHEME_CURRENT SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 $boost | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw 'Could not apply CPU boost policy.' }
+        Invoke-GtaTraceStage -Stage 'cpu.maximum' -Data @{ supply = $supply; value = $maximum } -Action {
+            & powercfg "/set${supply}valueindex" SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX $maximum | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not apply CPU maximum.' }
+        }
+        Invoke-GtaTraceStage -Stage 'cpu.boost' -Data @{ supply = $supply; value = $boost } -Action {
+            & powercfg "/set${supply}valueindex" SCHEME_CURRENT SUB_PROCESSOR be337238-0d82-4146-a960-4f3749d470c7 $boost | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not apply CPU boost policy.' }
+        }
     }
-    & powercfg /setactive SCHEME_CURRENT | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not activate CPU policy.' }
+    Invoke-GtaTraceStage -Stage 'cpu.activate' -Action {
+        & powercfg /setactive SCHEME_CURRENT | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Could not activate CPU policy.' }
+    }
 }
 
 # iCloud sync competed with the game for CPU and disk (1019 measurement), so it
@@ -633,14 +651,14 @@ function Save-PerfStatus($Status) {
 
 function Write-Perf([datetime]$Now = (Get-Date)) {
     $errors = @(); $fps = ','; $gpu = ',,,,,,'; $cpu = ''; $mode = ''
-    try { $fps = Get-Fps } catch { $errors += 'frames: ' + $_.Exception.Message }
-    try { $gpu = Read-PerfGpu } catch { $errors += 'gpu: ' + $_.Exception.Message }
-    try { $cpu = Read-PerfCpu } catch { $errors += 'cpu: ' + $_.Exception.Message }
-    try { $mode = Get-Mode } catch { $errors += 'mode: ' + $_.Exception.Message }
+    try { $fps = Invoke-GtaTraceStage -Stage 'perf.fps' -Action { Get-Fps } } catch { $errors += 'frames: ' + $_.Exception.Message }
+    try { $gpu = Invoke-GtaTraceStage -Stage 'perf.gpu' -Action { Read-PerfGpu } } catch { $errors += 'gpu: ' + $_.Exception.Message }
+    try { $cpu = Invoke-GtaTraceStage -Stage 'perf.cpu' -Action { Read-PerfCpu } } catch { $errors += 'cpu: ' + $_.Exception.Message }
+    try { $mode = Invoke-GtaTraceStage -Stage 'perf.mode' -Action { Get-Mode } } catch { $errors += 'mode: ' + $_.Exception.Message }
     $csv = Join-Path $script:PerfDir ($Now.ToString('yyyyMMdd') + '.csv')
     $saved = $false
     try {
-        Add-PerfLine $csv ($Now.ToString('s') + ",$fps,$gpu,$cpu,$mode") $script:Header
+        Invoke-GtaTraceStage -Stage 'perf.csv.write' -Data @{ path = $csv } -Action { Add-PerfLine $csv ($Now.ToString('s') + ",$fps,$gpu,$cpu,$mode") $script:Header }
         $saved = $true
     } catch { $errors += 'csv: ' + $_.Exception.Message }
     $feed = $script:FrameFeed
@@ -657,10 +675,10 @@ function Write-Perf([datetime]$Now = (Get-Date)) {
         last_frame_utc = $(if ($feed -and $feed.LastFrameUtc -ne [datetime]::MinValue) { $feed.LastFrameUtc.ToString('o') } else { $null })
         last_output_utc = $(if ($feed) { $feed.LastOutputUtc.ToString('o') } else { $null })
     }
-    Save-PerfStatus $status
+    Invoke-GtaTraceStage -Stage 'perf.status.write' -Action { Save-PerfStatus $status }
     $etwLoss = $status.etw_status -match '(?:EventsLost|BuffersLost|OverflowedPresents)=[1-9][0-9]*'
     if (-not $saved -or $fps -eq ',' -or $errors.Count -or $etwLoss) {
-        Add-PerfLine (Join-Path $script:PerfDir 'health.jsonl') ($status | ConvertTo-Json -Depth 5 -Compress)
+        Invoke-GtaTraceStage -Stage 'perf.health.write' -Action { Add-PerfLine (Join-Path $script:PerfDir 'health.jsonl') ($status | ConvertTo-Json -Depth 5 -Compress) }
     }
 }
 
@@ -689,24 +707,38 @@ $owned = $false
 try {
     try { $owned = $singleton.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned = $true }
     if (-not $owned) { throw 'GTA performance watcher already running.' }
+    try { Initialize-GtaStageTrace -Component 'watcher' -SourcePath $PSCommandPath } catch { }
+    Write-GtaStageEvent -Stage 'watcher.paths' -Data @{
+        log_path = $script:Log; perf_directory = $script:PerfDir; macro_config = $MacroConfig
+        ghelper_config = $script:Config; away_signal = $script:AwaySignalPath; fps_request = $script:FpsWantPath
+    }
     New-Item -ItemType Directory -Force -Path $script:PerfDir | Out-Null
     $nextPerf = [datetime]::MinValue; $lastModeError = ''; $lastPerfError = ''
     Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) watcher started pid=$PID config=$MacroConfig"
     while ($true) {
+        $loopSpan = [guid]::NewGuid().ToString('N'); $loopStarted = [Diagnostics.Stopwatch]::GetTimestamp()
+        Write-GtaStageEvent -Stage 'loop' -Phase 'begin' -SpanId $loopSpan
+        try {
         $running = [bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue)
         Invoke-ModeCheck $running
-        try { $null = Get-FrameFeed $running } catch { $script:FeedError = $_.Exception.Message }
-        try { Sync-CloudSync $running } catch { }
+        try { $null = Invoke-GtaTraceStage -Stage 'framefeed.check' -Action { Get-FrameFeed $running } } catch { $script:FeedError = $_.Exception.Message }
+        try { Invoke-GtaTraceStage -Stage 'cloudsync.check' -Action { Sync-CloudSync $running } } catch { }
         # A control failure must not stop telemetry, and a measurement failure must not stop control.
         if ($running -and (Get-Date) -ge $nextPerf) {
             $nextPerf = (Get-Date).AddSeconds(10)
-            try { Write-Perf; $lastPerfError = '' }
+            try { Invoke-GtaTraceStage -Stage 'perf.sample' -Action { Write-Perf }; $lastPerfError = '' }
             catch {
                 if ($lastPerfError -ne $_.Exception.Message) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) telemetry failed: $($_.Exception.Message)" }
                 $lastPerfError = $_.Exception.Message
             }
             # A user can return during the two-second frame sample.
             Invoke-ModeCheck ([bool](Get-Process -Name $script:Game -ErrorAction SilentlyContinue))
+        }
+        } catch {
+            Write-GtaStageEvent -Stage 'loop' -Phase 'error' -SpanId $loopSpan -Started $loopStarted -ErrorMessage $_.Exception.Message
+            throw
+        } finally {
+            Write-GtaStageEvent -Stage 'loop' -Phase 'end' -SpanId $loopSpan -Started $loopStarted
         }
         Start-Sleep -Seconds 1
     }
