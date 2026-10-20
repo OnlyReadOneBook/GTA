@@ -63,6 +63,9 @@ LoadConfig() {
 
     ; 사용자 유휴 기준은 AFK 와 수익이 하나를 쓴다(1019 사용자 지시). EarnUserIdleSec 줄은 읽지 않고 AFKUserIdleSec 으로 덮는다.
     config["Settings"]["EarnUserIdleSec"] := config["Settings"]["AFKUserIdleSec"]
+    ; 자동 외출(모드 2) 전환도 같은 유휴 기준을 쓴다(1019 사용자 지시). 0 이면 꺼진 그대로 둔다.
+    if (config["Settings"]["AutoAwayIdleSec"] > 0)
+        config["Settings"]["AutoAwayIdleSec"] := config["Settings"]["AFKUserIdleSec"]
 
     ; Hotkeys: 있는 줄을 전부 읽는다. 액션 표에 없는 이름은 등록 때 무시된다.
     for line in StrSplit(IniRead(file, "Hotkeys", , ""), "`n", "`r") {
