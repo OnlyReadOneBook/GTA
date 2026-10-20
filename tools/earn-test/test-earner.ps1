@@ -863,9 +863,20 @@ Reset()
 gEarnOn := false
 gEarnDue := Map(), gEarnDone := Map()
 config["Features"]["Earner"] := 1
+state["mode"] := ""
 EarnIdleInit()
 EarnModeTick()
 Check(gEarnOn && gEarnMode = "apps" && gEarnIdleEnabled, "Main startup arms app scheduler")
+SetEarner(false)
+Check(state.Get("mode", "") = "", "turning earnings off forgets the restart mode")
+state["mode"] := "full"
+EarnIdleInit()
+EarnModeTick()
+Check(gEarnOn && gEarnMode = "full" && state["mode"] = "full", "restart restores F9 full earnings without pressing F9")
+SetEarner(false)
+EarnIdleInit()
+EarnModeTick()
+Check(gEarnOn && gEarnMode = "apps" && state["mode"] = "apps", "restart after earnings off stays in app mode")
 Check(!EarnTaskAllowed("bunker") && !EarnTaskAllowed("dj") && !EarnTaskAllowed("warehouse") && !EarnTaskAllowed("dispatch") && EarnTaskAllowed("safe") && EarnTaskAllowed("staff"), "apps mode selects only safe and staff")
 gEarnDue["safe"] := fakeTick - 1
 gEarnDue["staff"] := fakeTick + 99999
@@ -1447,7 +1458,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 224 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 227 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
@@ -1786,5 +1797,6 @@ SetEarner(*) {
 EarnGamePID() => 101
 EarnOtherMacroBusy() => false
 EarnLog(*) => 0
+EarnStateSet(*) => 0
 '@
 Invoke-EarnerMutexCheck ($modeRaceDriver + "`n" + $modeTick) 'PASS idle mode race: 2 cases; no game input'

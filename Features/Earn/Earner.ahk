@@ -1,5 +1,5 @@
 ; === 수익 자동화 스케줄러 (Vinewood 금고·직원 파견 · 벙커 보급 · DJ 교체 · 창고 직원) ===
-; Main 시작 시 유휴 앱 모드. F9 두 번은 전체 수익과 유휴 앱을 전환하고 End는 모두 멈춘다.
+; Main 시작 시 유휴 앱 모드(재시작 전 F9 전체 수익이었으면 전체 수익). F9 두 번은 전체 수익과 유휴 앱을 전환하고 End는 모두 멈춘다.
 ; 때가 된 벙커·DJ·창고는 MCT를 한 번 열어 묶어 처리하고 한 번 닫는다. 금고·앱 파견은 그다음 별도로 한다.
 ; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
 ; 개별 실패는 기록하고 정리된 화면에서 다른 작업을 계속한다. 결과 불명확 작업은 보류한다.
@@ -110,7 +110,8 @@ EarnIdleInit() {
         return
     gEarnIdleEnabled := true
     gEarnMode := "apps"
-    gEarnModeRequest := "apps"
+    ; 재시작 전 F9 전체 수익이었으면 그대로 복원한다. 배포 재시작이 사용자가 끈 상태를 켜지 않게 F9 를 대신 누르지 않는다(1020).
+    gEarnModeRequest := EarnStateGet("mode") = "full" ? "full" : "apps"
     SetTimer(EarnModeTick, 1000)
 }
 
@@ -130,6 +131,7 @@ EarnModeTick() {
             gEarnMCTSeenTick := A_TickCount
         if (gEarnOn) {
             gEarnMode := requested
+            EarnStateSet("mode", requested)
             EarnLog("모드 전환: " (requested = "apps" ? "유휴 앱 자동" : "F9 전체 수익"))
         } else
             SetEarner(true, "", "hard", requested, true)
@@ -191,6 +193,7 @@ SetEarner(on, reason := "", stopMode := "hard", mode := "full", preserveSchedule
         InstallMouseHook()
         gEarnFail := ""
         gEarnMode := mode
+        EarnStateSet("mode", mode)
         gEarnTasks := EarnTaskList()
         if (!preserveSchedule)
             gEarnDue := Map(), gEarnDone := Map(), gEarnNextDue := Map(), gEarnSoftFails := Map()
@@ -234,6 +237,7 @@ SetEarner(on, reason := "", stopMode := "hard", mode := "full", preserveSchedule
         ShowTooltip(mode = "apps" ? "💰 유휴 앱 자동 (" KeyLabelFor("Earner") " 두 번: 전체 수익, End: 멈춤)" : "💰 전체 수익 켜짐 (" KeyLabelFor("Earner") " 두 번: MCT 수익 끄기, End: 멈춤)", 2500)
         EarnLog("켜짐: " EarnEnabledText())
     } else {
+        EarnStateSet("mode", "")
         SetTimer(EarnTick, 0)
         ; 수익이 꺼지면 AFK 는 자체 타이머로 돌아간다.
         if (IsSet(afkOn) && afkOn)
