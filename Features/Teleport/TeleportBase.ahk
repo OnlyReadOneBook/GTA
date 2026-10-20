@@ -32,3 +32,4 @@ TeleportBotWarp() {
 #Include %A_LineFile%\..\BotWarp.ahk
 ; F11 작텔 앞단의 퀵 조인 준비
 #Include %A_LineFile%\..\QuickJoinPrep.ahk
+#Include %A_LineFile%\..\FriendWarp.ahk
