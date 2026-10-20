@@ -337,3 +337,4 @@ try {
     Remove-Item -LiteralPath $fixture
 }
 & (Join-Path $PSScriptRoot 'gta-stage-trace.tests.ps1')
+& (Join-Path $PSScriptRoot 'telemetry-isolation.tests.ps1')
