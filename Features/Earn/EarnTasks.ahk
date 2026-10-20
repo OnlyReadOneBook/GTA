@@ -512,6 +512,24 @@ EarnMCTTurnInPlace() {
     return false
 }
 
+; 안내를 못 찾아도 F9 를 켰거나 MCT 를 확인한 이력이 있으면 여는 키를 그냥 눌러 본다(1020 사용자 지시).
+; 테러바이트는 Space, 의자 MCT 는 E 로 연다. 화면이 열리면 MCT 제목으로 확인하고, 안 열리면 실패로 넘긴다.
+EarnMCTOpenBlind() {
+    global gEarnMCTSeenTick
+    if (!IsSet(gEarnMCTSeenTick) || !gEarnMCTSeenTick)
+        return false
+    for key in ["Space", "e"] {
+        if (!EarnPress(key))
+            return false
+        if (EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 6000) || EarnSeen("mct_seated", [0,0,0.3,0.1])) {
+            EarnLog("MCT: 안내 없이 " key " 로 열림")
+            return true
+        }
+    }
+    EarnLog("MCT: 안내 없이 Space·E 를 눌러도 화면이 안 열림")
+    return false
+}
+
 EarnTaskMCTBegin() {
     global gEarnMCTCleanupOK, gEarnManualStop, gEarnMCTSeenTick
     gEarnMCTCleanupOK := true
@@ -523,7 +541,7 @@ EarnTaskMCTBegin() {
             if (EarnAborted())
                 return false
             if (A_TickCount >= spotDeadline) {
-                if (!EarnMCTTurnInPlace())
+                if (!EarnMCTTurnInPlace() && !EarnMCTOpenBlind())
                     return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 0.5)
                 break
             }

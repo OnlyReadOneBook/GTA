@@ -49,7 +49,7 @@ $mctBegin = [regex]::Replace($mctBegin, '^EarnTaskMCTBegin\(', 'ProductionEarnTa
 $production += "`n" + $mctBegin.Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TickCount', 'fakeTick')
 $spotSeen = [regex]::Match($tasks, '(?ms)^EarnMCTSpotSeen\(\) \{.*?^\}').Value
 if (-not $spotSeen) { throw 'Production EarnMCTSpotSeen missing' }
-$production += "`n" + $spotSeen + "`nEarnMCTTurnInPlace() => false"
+$production += "`n" + $spotSeen + "`nEarnMCTTurnInPlace() => false`nEarnMCTOpenBlind() => false"
 $mctPromptRows = @(Import-Csv (Join-Path $PSScriptRoot 'mct-capture-fixtures\mct-sit-prompt-runtime-20261009.tsv') -Delimiter "`t")
 if ($mctPromptRows.Count -ne 2 -or $mctPromptRows[0].text -ne 'Press' -or $mctPromptRows[1].text -ne 'to sit down.') {
     throw 'Recorded live MCT prompt OCR fixture is incomplete'
