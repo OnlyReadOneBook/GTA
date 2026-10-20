@@ -552,7 +552,7 @@ EarnFail(*) => false
     # 1020 녹화: MCT 곁에서 시선만 돌아간 경우. 기준 시각 뒤 물리 입력이 없을 때만 걷지 않고 45도씩 돈다.
     $turnDriver = @'
 global config := Map("Settings", Map("EarnTurnUnitsPerDeg", 2)), gEarnMCTSeenTick := 0, physIdle := 0, turns := 0, promptAt := 0
-for c in [[0, 99999, 3, 0], [1, 10, 3, 3], [1, 99999, 3, 3], [1, 99999, 0, 8]] {
+for c in [[0, 99999, 3, 0], [1, 10, 3, 3], [1, 99999, 3, 3], [1, 99999, 0, 32]] {
     gEarnMCTSeenTick := c[1] ? A_TickCount - 1000 : 0, physIdle := c[2], promptAt := c[3], turns := 0
     found := EarnMCTTurnInPlace()
     if (found != (promptAt && c[4] = promptAt) || turns != c[4])
@@ -570,6 +570,8 @@ EarnTurn(units, *) {
 }
 EarnMCTSpotSeen() => promptAt && turns >= promptAt
 EarnWaitSeen(*) => false
+EarnPress(*) => true
+EarnSleep(*) => true
 EarnLog(*) => 0
 '@
     Invoke-EarnOfflineCheck 'MCTTurnInPlace' 'EarnMCTTurnInPlace' $turnDriver 4

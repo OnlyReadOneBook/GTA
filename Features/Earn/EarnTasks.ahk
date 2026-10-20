@@ -500,12 +500,19 @@ EarnMCTTurnInPlace() {
     if (!IsSet(gEarnMCTSeenTick) || !gEarnMCTSeenTick)
         return false
     step := Round(45 * config["Settings"]["EarnTurnUnitsPerDeg"])
-    Loop 8 {
-        if (!EarnTurn(step))
+    ; 3인칭에서는 마우스로 카메라만 돌고 몸은 안 돈다(1020 녹화). 한 바퀴에 못 찾으면 V 로 카메라 모드를 바꿔 다시 돈다.
+    ; 도보 카메라는 네 모드라 최대 네 번 바꾸면 1인칭을 한 번은 지난다.
+    Loop 4 {
+        mode := A_Index
+        if (mode > 1 && (!EarnPress("v") || !EarnSleep(800)))
             return false
-        if (EarnMCTSpotSeen() || EarnWaitSeen("mct_terrorbyte", "", 800)) {
-            EarnLog("MCT: 시선이 돌아가 있어 제자리 회전으로 접근 안내를 찾음 (" A_Index * 45 "도)")
-            return true
+        Loop 8 {
+            if (!EarnTurn(step))
+                return false
+            if (EarnMCTSpotSeen() || EarnWaitSeen("mct_terrorbyte", "", 800)) {
+                EarnLog("MCT: 제자리 회전으로 접근 안내를 찾음 (카메라 모드 " mode "번째, " A_Index * 45 "도)")
+                return true
+            }
         }
     }
     EarnLog("MCT: 제자리 한 바퀴를 돌아도 접근 안내 없음")
@@ -513,12 +520,12 @@ EarnMCTTurnInPlace() {
 }
 
 ; 안내를 못 찾아도 F9 를 켰거나 MCT 를 확인한 이력이 있으면 여는 키를 그냥 눌러 본다(1020 사용자 지시).
-; 테러바이트는 Space, 의자 MCT 는 E 로 연다. 화면이 열리면 MCT 제목으로 확인하고, 안 열리면 실패로 넘긴다.
+; 테러바이트 MCT 는 Space 로 연다(E 는 테러바이트 의자용이라 누르지 않는다). 안 열리면 실패로 넘긴다.
 EarnMCTOpenBlind() {
     global gEarnMCTSeenTick
     if (!IsSet(gEarnMCTSeenTick) || !gEarnMCTSeenTick)
         return false
-    for key in ["Space", "e"] {
+    for key in ["Space"] {
         if (!EarnPress(key))
             return false
         if (EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 6000) || EarnSeen("mct_seated", [0,0,0.3,0.1])) {
@@ -526,7 +533,7 @@ EarnMCTOpenBlind() {
             return true
         }
     }
-    EarnLog("MCT: 안내 없이 Space·E 를 눌러도 화면이 안 열림")
+    EarnLog("MCT: 안내 없이 Space 를 눌러도 화면이 안 열림")
     return false
 }
 
