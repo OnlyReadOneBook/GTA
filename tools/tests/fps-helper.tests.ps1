@@ -65,3 +65,37 @@ public static class Rtss {
 } finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force
 }
+
+& {
+    $fixtureState = @{}
+    $fixtureState.stopped = @()
+    $fixtureState.started = 0
+    $fixtureState.instances = @(
+        [pscustomobject]@{ ProcessId = 1001; CreationDate = [datetime]'2026-01-01'; CommandLine = 'powershell.exe -File "C:\Program Files (x86)\RivaTuner Statistics Server\gta-fps-helper.ps1"' },
+        [pscustomobject]@{ ProcessId = 1002; CreationDate = [datetime]'2026-01-01'; CommandLine = 'powershell.exe -File "C:\unrelated.ps1"' }
+    )
+    function Copy-Item {}
+    function New-ScheduledTaskAction { @{} }
+    function New-ScheduledTaskTrigger { @{} }
+    function New-ScheduledTaskPrincipal { @{} }
+    function New-ScheduledTaskSettingsSet { @{} }
+    function Register-ScheduledTask {}
+    function Stop-ScheduledTask {}
+    function Start-ScheduledTask { $fixtureState.started++ }
+    function Out-File {}
+    function Get-CimInstance {
+        param($ClassName, $Filter)
+        if ($Filter -match '^ProcessId=(\d+)$') { return $fixtureState.instances | Where-Object ProcessId -eq ([int]$Matches[1]) }
+        return $fixtureState.instances
+    }
+    function Stop-Process {
+        param($Id, $ErrorAction)
+        $fixtureState.stopped += $Id
+        $fixtureState.instances = @($fixtureState.instances | Where-Object ProcessId -ne $Id)
+    }
+    & (Join-Path $repositoryRoot 'tools\fps-helper\install-fps-helper.ps1') $helperPath
+    if ($fixtureState.started -ne 1 -or $fixtureState.stopped.Count -ne 1 -or $fixtureState.stopped[0] -ne 1001 -or $fixtureState.instances[0].ProcessId -ne 1002) {
+        throw 'Installer must remove its surviving helper child before restarting, without touching unrelated PowerShell.'
+    }
+    Write-Output 'PASS installer replaces surviving helper child by exact path and leaves unrelated processes alone (mocked tasks/processes)'
+}
