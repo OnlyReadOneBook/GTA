@@ -105,7 +105,7 @@ Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 2 && gEarnDone["bunker
 fakeTick := gEarnRecovery.nextTick
 EarnTick()
 Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 3 && calls.Length = 2 && bossOffCount = 0,
-    "repeated unknown screens keep guarded recovery without transactions or speculative menu input")
+    "repeated unknown screens keep guarded recovery without transactions or boss-menu input")
 recoveryHud := true, recoveryHudAfter := true
 fakeTick := gEarnRecovery.nextTick
 EarnTick()
@@ -121,8 +121,8 @@ Loop 5 {
     fakeTick := gEarnRecovery.nextTick
     EarnTick()
 }
-Check(!gEarnOn && !IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && HasLog("복구 포기:"),
-    "unrecognized cleanup stops after the attempt cap so AFK input resumes instead of looping forever")
+Check(!gEarnOn && !IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && HasLog("복구 포기:") && backPresses = 5,
+    "unrecognized cleanup sends one back press per retry and stops after the attempt cap so input never goes silent")
 for boundary in ["boss-unconfirmed", "menu-close-failed", "hud-lost"] {
     Reset()
     endOK := false, endNoScreen := true
@@ -1040,7 +1040,7 @@ AFKSelfInput(start) {
 }
 Reset() {
     global
-    gEarnMode := "full", gEarnModeRequest := "", gEarnIdleEnabled := false
+    gEarnMode := "full", gEarnModeRequest := "", gEarnIdleEnabled := false, backPresses := 0
     hudInject := ""
     selfMarks := ""
     fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gEarnUserAbort := false
@@ -1316,6 +1316,11 @@ EarnSeen(name, *) => name = visibleModal
 EarnMCTRecoveryHud() => bossOffCount > 0 ? recoveryHudAfter : recoveryHud
 EarnMenuClose() => recoveryMenuCloseOK
 EarnSleep(*) => !gAbort
+EarnPress(key) {
+    global backPresses
+    backPresses++
+    return !gAbort
+}
 EarnAborted() => gAbort || !gEarnOn
 EarnMCTSpotSweep() => false
 EarnMCTOpen() {

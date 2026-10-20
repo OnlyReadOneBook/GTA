@@ -375,6 +375,12 @@ EarnTick() {
             if (EarnBossOffWithManualRetry(true))
                 outcome.cleanupOK := true
         }
+        ; 화면을 못 알아본 채 다음 시도까지 아무 입력도 없으면 방치로 세어진다(1020 17:35~17:49 61회 무입력 끝에 추방).
+        ; 뒤로(Backspace)는 확인창에서는 취소, MCT 화면에서는 한 단계 나가기라 돈이 나가지 않는다. 누른 뒤 결과는 다음 시도의 화면 확인이 다시 본다.
+        if (recovering && mctSession && !outcome.cleanupOK && gEarnCleanupNoScreen && EarnInputAllowed()) {
+            EarnLog("복구: " task.id " 화면 미인식 → 뒤로(Backspace) 한 번 뒤 다시 확인")
+            EarnPress("Backspace")
+        }
         ; 마지막 단계에서 사용자가 개입한 경우 성공/자동 재시도로 덮지 않는다.
         if (!EarnInputAllowed()) {
             fatalReason := gEarnFail = "" ? task.label " 중단" : gEarnFail
