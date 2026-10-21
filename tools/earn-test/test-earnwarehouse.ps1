@@ -26,7 +26,7 @@ $production = [regex]::Replace($production, $capturePattern, '')
 $production += "`n" + (Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnPolicy.ahk') -Raw -Encoding UTF8)
 $production += "`n" + (Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnWarehouseRead.ahk') -Raw -Encoding UTF8)
 $earner = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\Earner.ahk') -Raw -Encoding UTF8
-foreach ($functionName in @('EarnNotifyStockFull', 'EarnClearStockNotice')) {
+foreach ($functionName in @('EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnProductionObserve')) {
     $match = [regex]::Matches($earner, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}'))
     if ($match.Count -ne 1) { throw "Expected one production function: $functionName" }
     $production += "`n" + $match[0].Value
