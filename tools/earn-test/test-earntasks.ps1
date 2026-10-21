@@ -79,6 +79,7 @@ EarnClearStockNotice(source) {
         gEarnSellNotices.Delete(source)
     }
 }
+EarnProductionObserve(*) => 0
 ; EarnTasks tests extract individual task functions, not EarnCore's screen helpers.
 EarnMCTSitOcrSeen() => false
 EarnOcrLines(key, area, whiteText) => false

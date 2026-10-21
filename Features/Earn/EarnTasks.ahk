@@ -308,6 +308,10 @@ EarnBunkerTask(manageSession := true) {
         if (!IsObject(plan))
             return false
         gEarnBunkerFull := plan.reason = "stock_full"
+        ; 보급이 남았고 만재가 아니면 생산 중이어야 한다. 막대 값이 그대로면 생산 정지다.
+        producing := !gEarnBunkerFull && plan.supply > 0
+        unchanged := EarnProductionObserve("bunker"
+            , Format("재고 {:.0f}% 보급 {:.0f}%", plan.stock * 100, plan.supply * 100), producing)
         if (!gEarnBunkerFull)
             EarnClearStockNotice("bunker")
         if (gEarnBunkerFull) {
@@ -319,7 +323,9 @@ EarnBunkerTask(manageSession := true) {
             EarnLog("벙커: " plan.reason " → 다음 " plan.bars "칸 소모 경계에서 재확인")
             ; 실제 잔량이 경계에 가까우면 짧게 보고, 그 밖에도 최대 1분마다 새 잔량을 확인한다.
             ; 생산 가속 여부를 시간으로 추측하지 않으며 구매는 새 잔량과 가격을 읽어 결정한다.
-            gEarnNextDue["bunker"] := A_TickCount + Max(5000, Min(60000, plan.waitMs))
+            ; 생산 중이면 보급이 1~2분마다 줄어든다. 10분 넘게 그대로면 생산이 멈춘 것이라 경계가 오지 않는다.
+            ; 1021 에는 이걸 모르고 11시간 동안 1~2분마다 MCT 를 열었다(441회). 그때는 5분마다만 본다.
+            gEarnNextDue["bunker"] := A_TickCount + (unchanged >= 600000 ? 300000 : Max(5000, Min(60000, plan.waitMs)))
             ok := true
         } else {
             ; 배송 중인지 따로 기억하지 않고 막대가 사야 할 때면 매번 들어간다. 배송 중이면 게임 확인창이
@@ -352,6 +358,7 @@ EarnBunkerObservePlan(requestedSeconds) {
             continue
         EarnLog(Format("벙커: 재고 {:.0f}% 보급 {:.0f}%", stock * 100, supply * 100))
         plan := EarnBunkerOrderPlan(supply, stock, requestedSeconds)
+        plan.stock := stock, plan.supply := supply
         if (plan.reason = "invalid_read" || plan.reason = "invalid_interval")
             return EarnFail(plan.reason = "invalid_read" ? "벙커: 막대 범위 오류"
                 : "벙커 주기는 1680초의 1~5배(28~140분)여야 함")

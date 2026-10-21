@@ -708,6 +708,33 @@ EarnClearStockNotice(source) {
     }
 }
 
+; 생산 정지 감지. 1021 03:00~14:48 세션에 접속한 채 벙커(재고 97%·보급 96%)와 나이트클럽 재고가
+; 12시간 그대로였는데 아무 알림이 없었다. 생산 중이어야 할 사업장의 판독값이 1시간 넘게 같으면 알린다.
+; active=false(만재·보급 없음)는 멈춘 게 정상이므로 기록을 지운다. 반환값은 같은 값이 이어진 ms다.
+EarnProductionObserve(source, key, active := true) {
+    static seenBySource := Map()
+    seen := seenBySource.Get(source, "")
+    if (!active) {
+        if (IsObject(seen))
+            seenBySource.Delete(source)
+        return 0
+    }
+    if (!IsObject(seen) || seen.key != key) {
+        if (IsObject(seen) && seen.notified)
+            EarnLog("생산 재개 확인: " source)
+        seenBySource[source] := {key: key, since: A_TickCount, notified: false}
+        return 0
+    }
+    unchanged := A_TickCount - seen.since
+    if (unchanged >= 3600000 && !seen.notified) {
+        seen.notified := true
+        reason := source " 생산 정지 의심: " Round(unchanged / 60000) "분째 같은 값 (" key ")"
+        EarnLog(reason " · 재접속 필요")
+        ShowTooltip("⚠ " reason " · 재접속하세요", 15000)
+    }
+    return unchanged
+}
+
 EarnFinishScheduledTask(result) {
     global gEarnDue, gEarnDone, gEarnSoftFails, gEarnNextDue, gEarnHeld, gEarnFailures, config
     task := result.task

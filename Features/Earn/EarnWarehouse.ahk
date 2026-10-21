@@ -46,15 +46,44 @@ EarnWarehouseManage() {
     return false
 }
 
+; 생산 정지 감지용 값. 만재가 아닌 품목이 하나도 없으면 생산이 멈춘 게 정상이라 빈 문자열이다.
+EarnWarehouseStockKey(goods) {
+    key := "", producing := false
+    for row in goods {
+        key .= (key = "" ? "" : " ") row.count "/" row.capacity
+        if (row.count < row.capacity)
+            producing := true
+    }
+    return producing ? key : ""
+}
+
 ; 생산/판매로 수량이나 용량이 바뀌면 부분재고의 판매주기 후보가 달라질 수 있어 실제 배정을 다시 읽는다.
 ; 지난 확인과 같은 재고이거나 전부 만재면 직원 관리 화면에 들어가지 않고 stockOnly로 알린다.
 EarnWarehouseObserve(&stockOnly := false) {
     stockOnly := false
     if (!EarnUIClick("nc_dj_menu", 500, 920) || !EarnSleep(400))
         return false
-    goods := EarnWarehouseReadStock(EarnReadScreen([728,130,880,420]))
-    if (!goods)
-        return EarnFail("창고: 7품목 현재/최대 재고 판독 실패")
+    ; 방치 중 30프레임 제한에서는 400ms 뒤에도 Sell Goods 가 덜 그려져 있다. 같은 화면을 1021 녹화 프레임으로
+    ; 다시 읽으면 통과했는데 실행 중에는 304회 연속 실패했다. 입력 없이 0.7초 간격으로 최대 6번 읽는다.
+    Loop 6 {
+        lines := EarnReadScreen([728,130,880,420])
+        goods := EarnWarehouseReadStock(lines)
+        if (goods)
+            break
+        if (A_Index = 6) {
+            if (IsObject(lines)) {
+                texts := ""
+                for line in lines
+                    texts .= (texts = "" ? "" : " | ") line.x "," line.y " " line.text
+                EarnLog("창고 OCR: " texts)
+            }
+            return EarnFail("창고: 7품목 현재/최대 재고 판독 실패")
+        }
+        if (!EarnSleep(700))
+            return false
+    }
+    stockKey := EarnWarehouseStockKey(goods)
+    EarnProductionObserve("nightclub", stockKey, stockKey != "")
     if (!EarnWarehouseNeedStaff(goods)) {
         stockOnly := true
         return goods
