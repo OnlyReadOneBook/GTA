@@ -36,6 +36,7 @@ RegisterActions() {
     gActions.Push({id: "Snack", label: "스낵", fn: (*) => EatSnack(), feature: "MenuMacros"})
     gActions.Push({id: "SaleAlert", label: "판매 차례 알림", fn: (*) => ToggleSaleAlert(), state: (*) => gSaleOn ? "켜짐" : ""})
     gActions.Push({id: "Earner", label: "수익 자동화", fn: (*) => ToggleEarner(), feature: "Earner", confirm: true, state: (*) => gEarnOn ? (gEarnMode = "apps" ? "유휴 앱 자동" : "전체 켜짐") : ""})
+    gActions.Push({id: "CasinoVpn", label: "카지노 VPN 실행", fn: (*) => StartCasinoVpn(), feature: "CasinoVpn", global: true, confirm: true, state: (*) => gCasinoVpnOn ? "켜짐" : ""})
     gActions.Push({id: "Help", label: "도움말", fn: (*) => HelpKey()})   ; 두 번 누르면 설정 창
     gActions.Push({id: "StopAll", label: "전체 멈춤", fn: (*) => StopAll("hotkey")})
     gActions.Push({id: "Exit", label: "종료", fn: (*) => ExitAll(), global: true, confirm: true})   ; 전역이라 노트북 Fn+P/Fn+B(Pause) 오타로 꺼지지 않게 두 번 누름

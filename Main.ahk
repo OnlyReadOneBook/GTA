@@ -39,6 +39,7 @@ A_MenuMaskKey := "vkE8"
 #Include Features\Earn\Earner.ahk
 #Include Features\CpuBoost.ahk
 #Include Features\MemoryGuard.ahk
+#Include Features\CasinoVpn.ahk
 #Include Features\StopAll.ahk
 #Include Features\Help.ahk
 #Include Features\Overlay.ahk

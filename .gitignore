@@ -5,3 +5,5 @@ third_party/
 Photo/
 .codex/
 debug.log
+
+vpn/*.conf
