@@ -6,7 +6,7 @@
 #Include Features\CasinoVpn.ahk
 
 ini := A_ScriptDir "\Config.ini"
-hold := IniRead(ini, "Settings", "CasinoVpnHoldSec", 90)
-maxSec := IniRead(ini, "Settings", "CasinoVpnMaxSec", 600)
-StartCasinoVpnWatch(IsNumber(hold) ? hold + 0 : 90, IsNumber(maxSec) ? maxSec + 0 : 600)
+hold := IniRead(ini, "Settings", "CasinoVpnHoldSec", 5)
+maxSec := IniRead(ini, "Settings", "CasinoVpnMaxSec", 900)
+StartCasinoVpnWatch(IsNumber(hold) ? hold + 0 : 5, IsNumber(maxSec) ? maxSec + 0 : 900)
 Persistent()
