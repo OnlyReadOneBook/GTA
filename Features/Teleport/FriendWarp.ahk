@@ -109,8 +109,10 @@ FriendWarpLocate(&target, &why) {
         ; (1021 02:45 실측: Home 이 열린 직후 1초 만에 탐색 중단, 몇 초 뒤에는 첫 카드에 -Atra_Mora- 와 JOIN GAME 이 있었다).
         if (A_Index = 1 && why = "-Atra_Mora-가 현재 보이는 목록에 없음") {
             Loop 20 {
-                if (!FriendWarpWait(100))
-                    break
+                if (!FriendWarpWait(100)) {
+                    why := "사용자 입력·중단 또는 포커스 이탈"
+                    return false
+                }
                 if (FriendWarpFindTarget(&target, &why))
                     return true
                 if (why != "-Atra_Mora-가 현재 보이는 목록에 없음")
@@ -133,11 +135,15 @@ FriendWarpLocate(&target, &why) {
             MacroLog("friendwarp", "탐색 중단: 커서 이동 뒤 HOME 탭 위치 바뀜")
             break
         }
-        if (!FriendWarpGuard())
+        if (!FriendWarpGuard()) {
+            MacroLog("friendwarp", "탐색 중단: 스크롤 전 입력 감지 또는 중단")
             break
+        }
         Click(A_Index = 1 ? "WheelUp 30" : "WheelDown 3")
-        if (!FriendWarpWait(250))
+        if (!FriendWarpWait(250)) {
+            MacroLog("friendwarp", "탐색 중단: 스크롤 뒤 입력 감지 또는 중단")
             break
+        }
     }
     why := "친구 목록 탐색 중단 또는 -Atra_Mora-를 찾지 못함"
     return false
