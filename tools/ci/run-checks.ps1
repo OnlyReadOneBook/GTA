@@ -27,7 +27,7 @@ $ahkSuites = @('test-earner', 'test-earnledger', 'test-antiafk', 'test-altf4tele
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-discord-hud', 'test-discordhud-launch', 'test-overlay-place', 'test-memguard', 'test-earndj', 'test-phone-call-template')
 $allAuxChecks = @(
-    'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-dj-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture', 'test-gta-mode', 'test-frame-feed')
+    'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-dj-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture', 'test-gta-mode', 'test-frame-feed', 'test-steam-launch')
 $selectionScript = Join-Path $PSScriptRoot 'check-selection.ps1'
 . $selectionScript
 if ($ChangedFilesPath) {
@@ -199,6 +199,9 @@ try {
     )) }
     if ('test-frame-feed' -in $selectedSuites) { Invoke-LoggedCheck 'test-frame-feed' $powershell ($psArguments + @(
         (Join-Path $repositoryRoot 'tools\tests\frame-feed.tests.ps1')
+    )) }
+    if ('test-steam-launch' -in $selectedSuites) { Invoke-LoggedCheck 'test-steam-launch' $powershell ($psArguments + @(
+        (Join-Path $repositoryRoot 'tools\tests\steam-launch.tests.ps1')
     )) }
     if (($sourceHashes | ConvertTo-Json -Compress) -cne ((Get-MacroHashes $repositoryRoot) | ConvertTo-Json -Compress)) {
         throw 'Package source files changed during verification.'
