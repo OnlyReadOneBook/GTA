@@ -73,21 +73,22 @@ FriendWarpOpen(&why) {
         why := "사용자 입력·중단 또는 포커스 이탈"
         return false
     }
-    ; Home 은 열리는 동안 미끄러져 들어온다. 한 번 보인 위치로 바로 넘어가면 다음 판독에서 놓친다
-    ; (1021 02:34 실측: Home 을 연 뒤 1초 만에 "친구 목록이 보이지 않음"). 같은 자리에서 두 번 보일 때 연 것으로 본다.
-    lastX := "", lastY := ""
+    ; Home 은 누른 직후 0.3~0.5초 HOME 탭이 잠깐 보였다가 사라지고, 4~5초 뒤에야 자리 잡는다(1021 02:4x 100ms 표본 실측).
+    ; 깜빡임을 연 것으로 보면 다음 판독에서 놓쳐 1초 만에 멈췄다. 같은 자리에서 1초 내내 보일 때 연 것으로 본다.
+    lastX := "", lastY := "", steady := 0
     if (!FriendWarpAnchor(&lastX, &lastY))
         PressKey("Home")
-    Loop 30 {
+    Loop 80 {
         if (!FriendWarpWait(100))
             break
         if (!FriendWarpAnchor(&x, &y)) {
-            lastX := "", lastY := ""
+            lastX := "", lastY := "", steady := 0
             continue
         }
-        if (x = lastX && y = lastY)
-            return true
+        steady := x = lastX && y = lastY ? steady + 1 : 0
         lastX := x, lastY := y
+        if (steady >= 10)
+            return true
     }
     why := "Home 친구 목록을 확인하지 못함"
     return false
@@ -104,16 +105,34 @@ FriendWarpLocate(&target, &why) {
         }
         if (FriendWarpFindTarget(&target, &why))
             return true
+        ; HOME 탭보다 친구 카드가 늦게 그려진다. 첫 화면에서는 스크롤하기 전에 카드가 뜰 때까지 기다린다
+        ; (1021 02:45 실측: Home 이 열린 직후 1초 만에 탐색 중단, 몇 초 뒤에는 첫 카드에 -Atra_Mora- 와 JOIN GAME 이 있었다).
+        if (A_Index = 1 && why = "-Atra_Mora-가 현재 보이는 목록에 없음") {
+            Loop 20 {
+                if (!FriendWarpWait(100))
+                    break
+                if (FriendWarpFindTarget(&target, &why))
+                    return true
+                if (why != "-Atra_Mora-가 현재 보이는 목록에 없음")
+                    break
+            }
+        }
         if (why != "-Atra_Mora-가 현재 보이는 목록에 없음")
             return false
         if (A_Index = 14)
             break
-        if (!FriendWarpAnchor(&hx, &hy))
+        if (!FriendWarpAnchor(&hx, &hy)) {
+            MacroLog("friendwarp", "탐색 중단: 스크롤 전 HOME 탭 사라짐")
             break
-        if (!FriendWarpCursorTo(hx + 160, hy + 170) || !FriendWarpWait(80))
+        }
+        if (!FriendWarpCursorTo(hx + 160, hy + 170) || !FriendWarpWait(80)) {
+            MacroLog("friendwarp", "탐색 중단: 목록 위로 커서 이동 실패 또는 입력 감지")
             break
-        if (!FriendWarpAnchor(&newX, &newY) || hx != newX || hy != newY)
+        }
+        if (!FriendWarpAnchor(&newX, &newY) || hx != newX || hy != newY) {
+            MacroLog("friendwarp", "탐색 중단: 커서 이동 뒤 HOME 탭 위치 바뀜")
             break
+        }
         if (!FriendWarpGuard())
             break
         Click(A_Index = 1 ? "WheelUp 30" : "WheelDown 3")
