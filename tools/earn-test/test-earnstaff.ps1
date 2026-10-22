@@ -53,7 +53,7 @@ global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := [], bailMenuReads := 0, bailMenuReadsAtFirstKey := 0
 global hangarState := "ready", hangarRequests := 0, hangarReads := 0
-global stockFullNotices := 0, stockFullReasons := [], stockNoticeClears := 0, gEarnSellNotices := Map()
+global stockFullNotices := 0, stockFullReasons := [], stockNoticeClears := 0, gEarnSellNotices := Map(), gEarnSellNoticeSeen := Map()
 global greyText := "", greyMissing := 0, flickerReads := 0
 OnError(TestUnhandledError)
 __FIXTURE_INIT__
@@ -447,7 +447,7 @@ RunCargoTests() {
     Check(stockFullNotices = 1 && gEarnSellNotices.Count = 1 && gEarnSellNotices.Has("cargo:1"),
         "same cargo full notice is deduplicated by its stable slot key")
 
-    ; Only a confirmed ready/$7,500 reread clears that cargo slot. Busy and unreadable states preserve it.
+    ; A confirmed ready/$7,500 reread or a busy (sourcing, so not full) slot clears it. Unreadable states preserve it.
     Reset("normal",["busy","busy"])
     activeCount := 1
     gEarnSellNotices := Map("cargo:1", "기존 창고 경고", "hangar", "기존 격납고 경고")
@@ -456,9 +456,9 @@ RunCargoTests() {
         "confirmed ready cargo clears only its own slot")
     Reset("normal",["busy","busy"])
     activeCount := 1, cargoStatuses[1] := "busy", gEarnSellNotices := Map("cargo:1", "기존 창고 경고")
-    Check(EarnStaffCargoWarehouses() && gEarnSellNotices.Get("cargo:1", "") = "기존 창고 경고"
-        && stockNoticeClears = 0,
-        "busy cargo preserves its prior full notice")
+    Check(EarnStaffCargoWarehouses() && !gEarnSellNotices.Has("cargo:1")
+        && stockNoticeClears = 1,
+        "busy cargo clears its prior full notice")
     Reset("cargo_ocr_fail",["busy","busy"])
     activeCount := 1, gEarnSellNotices := Map("cargo:1", "기존 창고 경고")
     Check(!EarnStaffCargoWarehouses() && gEarnSellNotices.Get("cargo:1", "") = "기존 창고 경고"
@@ -480,9 +480,9 @@ RunCargoTests() {
         "confirmed ready hangar clears only the hangar warning")
     Reset("normal",["busy","busy"])
     hangarState := "busy", gEarnSellNotices := Map("hangar", "기존 격납고 경고")
-    Check(EarnStaffHangar() && gEarnSellNotices.Get("hangar", "") = "기존 격납고 경고"
-        && stockNoticeClears = 0,
-        "busy hangar preserves its prior full notice")
+    Check(EarnStaffHangar() && !gEarnSellNotices.Has("hangar")
+        && stockNoticeClears = 1,
+        "busy hangar clears its prior full notice")
     Reset("normal",["busy","busy"])
     hangarState := "odd", gEarnSellNotices := Map("hangar", "기존 격납고 경고")
     Check(EarnStaffHangar() && gEarnSellNotices.Get("hangar", "") = "기존 격납고 경고"

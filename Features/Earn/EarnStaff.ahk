@@ -208,8 +208,11 @@ EarnStaffCargoWarehouses() {
         noticeKey := "cargo:" current.index
         if (current.state = "busy" || current.state = "full") {
             EarnLog("직원: " displayName (current.state = "busy" ? " 조달 중" : " 만재") ", 건너뜀")
+            ; 조달 중이면 만재가 아니다. 판매 뒤 바로 조달을 보낸 창고의 알림이 남지 않게 지운다.
             if (current.state = "full")
                 EarnNotifyStockFull(noticeKey, "스페셜 패키지 " displayName " 만재: 판매 필요")
+            else
+                EarnClearStockNotice(noticeKey)
         } else {
             if (current.state != "ready" || current.price != 7500)
                 return EarnFail("직원: " current.name " 준비 문구 또는 $7,500 미확인")
@@ -302,6 +305,8 @@ EarnStaffHangar() {
         EarnLog("직원: 격납고 " (state = "busy" ? "조달 중" : state = "full" ? "만재" : "상태 미확인") ", 건너뜀")
         if (state = "full")
             EarnNotifyStockFull("hangar", "격납고 재고 만재: 판매 필요")
+        else if (state = "busy")
+            EarnClearStockNotice("hangar")
         return true
     }
     ; 재확인이 어긋나도 아직 Enter 전이라 산 것이 없다. 자동화를 끄지 않고 5분 뒤 다시 본다(1005 04:20 실측).
