@@ -35,6 +35,7 @@ RegisterActions() {
     gActions.Push({id: "CayoPericoTimer", label: "카요 타이머", fn: (*) => ToggleCayoPericoTimer(), feature: "Timer", state: (*) => cayoTimerRunning ? "켜짐" : ""})
     gActions.Push({id: "Snack", label: "스낵", fn: (*) => EatSnack(), feature: "MenuMacros"})
     gActions.Push({id: "SaleAlert", label: "판매 차례 알림", fn: (*) => ToggleSaleAlert(), state: (*) => gSaleOn ? "켜짐" : ""})
+    gActions.Push({id: "LagSwitch", label: "랜선 뽑기(누르는 동안)", fn: (*) => ExecuteLagSwitch(), state: (*) => gLagActive ? "끊김" : ""})
     gActions.Push({id: "Earner", label: "수익 자동화", fn: (*) => ToggleEarner(), feature: "Earner", confirm: true, state: (*) => gEarnOn ? (gEarnMode = "apps" ? "유휴 앱 자동" : "전체 켜짐") : ""})
     gActions.Push({id: "Help", label: "도움말", fn: (*) => HelpKey()})   ; 두 번 누르면 설정 창
     gActions.Push({id: "StopAll", label: "전체 멈춤", fn: (*) => StopAll("hotkey")})

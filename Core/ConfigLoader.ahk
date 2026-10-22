@@ -26,7 +26,7 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "AFKRefocusIdleSec", 300, "AFKRefocusSettleMs", 800, "AFKMCTCloseIdleSec", 300, "MemWarnPct", 80, "MemClosePct", 92, "MemCloseMinGB", 25,
     "OverlayEnabled", 1, "OverlayXPct", 98, "OverlayYPct", 18,
     "DiscordHUDAppID", "",
-    "DiscordHUDPath", "", "SaleAlertName", "", "SaleAlertIntervalSec", 10,
+    "DiscordHUDPath", "", "SaleAlertName", "", "SaleAlertIntervalSec", 10, "LagSwitchMode", "suspend", "LagSwitchMaxMs", 6000, "LagSwitchAdapter", "",
     "MenuTopOffset", 0, "SnackMenuSteps", 4, "SnackSubSteps", 2, "SnackItemSteps", 0, "SnackCount", 1, "SnackCloseMenu", 1,
     "EarnKeyDelay", 350, "EarnTurnUnitsPerDeg", 29, "EarnRerollMax", 12, "EarnReachPx", 14, "EarnWalkRetry", 3, "EarnUserIdleSec", 45, "EarnMCTBatchAheadSec", 120, "EarnLoadMinSec", 8, "EarnLoadTimeoutSec", 240,
     "EarnMCTOnly", 1, "EarnBunker", 0, "EarnBunkerIntervalSec", 6720, "EarnDJ", 0, "EarnDJIntervalMin", 5, "EarnDJPopularityPct", 95,

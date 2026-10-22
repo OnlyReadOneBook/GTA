@@ -27,6 +27,7 @@ A_MenuMaskKey := "vkE8"
 #Include Features\SessionSwitch.ahk
 #Include Features\AntiAFK.ahk
 #Include Features\Snack.ahk
+#Include Features\LagSwitch.ahk
 #Include Features\Earn\EarnCore.ahk
 #Include Features\Earn\EarnLedger.ahk
 #Include Features\Earn\EarnScreen.ahk
