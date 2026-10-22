@@ -6,8 +6,10 @@ Steam 메인 창과 Special Offers 창이 같이 뜬다. GTA 에는 둘 다 필�
 - Special Offers: Steam 설정 > 인터페이스 "Notify me about additions or changes to my games..."
   (enable_marketing_messages) 가 끄는데, 값은 userdata\<계정>\config\localconfig.vdf 의 News\NotifyAvailableGames 다.
   Steam 은 끌 때 메모리 값으로 이 파일을 덮어쓰므로 Steam 이 꺼져 있을 때만 고친다.
-- 메인 창: Steam 을 -silent 로 띄우면 트레이에만 뜬다(Steam 의 "컴퓨터 시작 시 실행"이 쓰는 그 플래그).
-Steam 이 이미 켜져 있으면 설정 파일은 건드리지 않고 GTA 실행만 넘긴다. 게임 입력·창 조작은 없다.
+- 메인 창: 바로가기와 같은 steam://rungameid 실행에 -silent 만 더해 띄우면 트레이에만 뜬다(Steam 의
+  "컴퓨터 시작 시 실행"이 쓰는 그 플래그. 9/24~10/8 -silent 로 켜진 다섯 번은 logs\webhelper.txt 에 메인 창이
+  숨겨진 채로만 있고 Special Offers 도 안 열렸다).
+Steam 이 이미 켜져 있으면 설정 파일은 건드리지 않고 바로가기와 똑같이 GTA 실행만 넘긴다. 게임 입력·창 조작은 없다.
 #>
 [CmdletBinding()]
 param([switch]$LibraryOnly)
@@ -88,7 +90,8 @@ function Set-SteamMarketingOff {
     if ($newsBodyStart -ge 0) {
         return [pscustomobject]@{ Text = $Text.Insert($newsBodyStart, $newline + $entry); Changed = $true }
     }
-    $block = "`t`"News`"" + $newline + "`t{" + $newline + $entry + $newline + "`t}" + $newline
+    # 지금 클라이언트의 설정 이름이 news\NotifyAvailableGames 라 새 블록은 소문자로 만든다(찾을 때는 대소문자를 가리지 않는다).
+    $block = "`t`"news`"" + $newline + "`t{" + $newline + $entry + $newline + "`t}" + $newline
     return [pscustomobject]@{ Text = $Text.Insert($rootClose, $block); Changed = $true }
 }
 
@@ -115,9 +118,11 @@ function Get-SteamExe {
 
 function Invoke-GtaLaunch {
     $steamExe = Get-SteamExe
+    $arguments = @('--', ('steam://rungameid/' + $script:GtaAppId))
     if (Get-Process -Name steam -ErrorAction SilentlyContinue) {
         Write-SteamLaunchLog 'Steam 이 켜져 있어 설정 파일은 그대로 두고 GTA 실행만 넘김'
     } else {
+        $arguments = @('-silent') + $arguments
         $userdata = Join-Path (Split-Path -Parent $steamExe) 'userdata'
         foreach ($config in @(Get-ChildItem -Path (Join-Path $userdata '*\config\localconfig.vdf') -File -ErrorAction SilentlyContinue)) {
             try {
@@ -127,8 +132,8 @@ function Invoke-GtaLaunch {
             }
         }
     }
-    Start-Process -FilePath $steamExe -ArgumentList @('-silent', '-applaunch', $script:GtaAppId)
-    Write-SteamLaunchLog ('실행: "' + $steamExe + '" -silent -applaunch ' + $script:GtaAppId)
+    Start-Process -FilePath $steamExe -ArgumentList $arguments
+    Write-SteamLaunchLog ('실행: "' + $steamExe + '" ' + ($arguments -join ' '))
 }
 
 if (-not $LibraryOnly) { Invoke-GtaLaunch }

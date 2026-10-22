@@ -31,7 +31,7 @@ $plain = @(
 
 $first = Set-SteamMarketingOff $plain
 Check $first.Changed 'missing News block is added'
-Check ($first.Text.EndsWith("`t`"News`"$nl`t{$nl`t`t`"NotifyAvailableGames`"`t`t`"0`"$nl`t}$nl}$nl")) 'News block is inserted as the last top-level child'
+Check ($first.Text.EndsWith("`t`"news`"$nl`t{$nl`t`t`"NotifyAvailableGames`"`t`t`"0`"$nl`t}$nl}$nl")) 'lowercase news block is inserted as the last top-level child'
 Check ($first.Text.StartsWith($plain.Substring(0, $plain.LastIndexOf('}')))) 'everything before the root close is kept byte for byte'
 Check ($first.Text.Contains("`t`t`t`"NotifyAvailableGames`"`t`t`"1`"")) 'a nested News block is not top-level and stays untouched'
 Check ($first.Text.Contains('{\"News\":{\"NotifyAvailableGames\":1}}')) 'quoted JSON with braces and escaped quotes is not parsed as structure'
@@ -50,11 +50,11 @@ Check (-not $same.Changed -and $same.Text -ceq $alreadyOff) 'keys match case-ins
 $otherKey = ($plain.Substring(0, $plain.LastIndexOf('}'))) + "`t`"News`"$nl`t{$nl`t`t`"LastSeen`"`t`t`"5`"$nl`t}$nl}$nl"
 $added = Set-SteamMarketingOff $otherKey
 Check ($added.Changed -and $added.Text.Contains("`t`"News`"$nl`t{$nl`t`t`"NotifyAvailableGames`"`t`t`"0`"$nl`t`t`"LastSeen`"`t`t`"5`"")) 'existing News block gains the key'
-Check (([regex]::Matches($added.Text, '"News"')).Count -eq 2) 'no duplicate top-level News block is added'
+Check (([regex]::Matches($added.Text, '(?i)"news"')).Count -eq 2) 'no duplicate top-level News block is added'
 
 $crlf = $plain.Replace("`n", "`r`n")
 $crlfOut = Set-SteamMarketingOff $crlf
-Check ($crlfOut.Text.EndsWith("`t`"News`"`r`n`t{`r`n`t`t`"NotifyAvailableGames`"`t`t`"0`"`r`n`t}`r`n}`r`n")) 'CRLF files keep CRLF'
+Check ($crlfOut.Text.EndsWith("`t`"news`"`r`n`t{`r`n`t`t`"NotifyAvailableGames`"`t`t`"0`"`r`n`t}`r`n}`r`n")) 'CRLF files keep CRLF'
 
 Check (Throws { Set-SteamMarketingOff ('"UserLocalConfigStore"' + $nl + '{' + $nl + "`t`"A`"`t`"open") }) 'unterminated string refuses to patch'
 Check (Throws { Set-SteamMarketingOff ('"UserLocalConfigStore"' + $nl + '{' + $nl + "`t`"A`"`t`t`"1`"") }) 'unclosed root refuses to patch'
@@ -104,12 +104,12 @@ try {
     [IO.File]::WriteAllText($userFile, $plain, (New-Object Text.UTF8Encoding($false)))
     Invoke-GtaLaunch
     Check ([IO.File]::ReadAllText($userFile) -ceq $plain) 'running Steam leaves localconfig.vdf alone'
-    Check ($script:started.Count -eq 1 -and $script:started[0][0] -eq $script:fakeSteamExe -and $script:started[0][1] -eq '-silent -applaunch 3240220') 'running Steam still gets the silent GTA launch'
+    Check ($script:started.Count -eq 1 -and $script:started[0][0] -eq $script:fakeSteamExe -and $script:started[0][1] -eq '-- steam://rungameid/3240220') 'running Steam gets the same launch as the old .url shortcut'
 
     $script:fakeRunning = $false
     Invoke-GtaLaunch
     Check ([IO.File]::ReadAllText($userFile) -ceq $first.Text) 'closed Steam gets marketing messages off before start'
-    Check ($script:started.Count -eq 2 -and $script:started[1][1] -eq '-silent -applaunch 3240220') 'closed Steam starts silently with the GTA app id'
+    Check ($script:started.Count -eq 2 -and $script:started[1][1] -eq '-silent -- steam://rungameid/3240220') 'closed Steam starts silently with the GTA launch URL'
 
     [IO.File]::WriteAllText($userFile, '"UserLocalConfigStore"' + $nl + '{', (New-Object Text.UTF8Encoding($false)))
     Invoke-GtaLaunch
