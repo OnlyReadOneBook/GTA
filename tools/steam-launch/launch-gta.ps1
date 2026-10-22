@@ -103,8 +103,13 @@ function Update-SteamLocalConfig([string]$Path) {
     $patch = Set-SteamMarketingOff $text
     if (-not $patch.Changed) { return $false }
     $temp = $Path + '.steam-launch.tmp'
-    [IO.File]::WriteAllText($temp, $patch.Text, (New-Object Text.UTF8Encoding($hasBom)))
-    [IO.File]::Replace($temp, $Path, $Path + '.steam-launch.bak')
+    try {
+        [IO.File]::WriteAllText($temp, $patch.Text, (New-Object Text.UTF8Encoding($hasBom)))
+        [IO.File]::Replace($temp, $Path, $Path + '.steam-launch.bak')
+    } catch {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        throw
+    }
     return $true
 }
 
