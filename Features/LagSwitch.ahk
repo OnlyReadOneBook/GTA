@@ -51,7 +51,13 @@ LagSwitchCut(mode, s) {
             return false
         }
         gLagAdapter := name
-        LagSwitchPS("Disable-NetAdapter -Name '" StrReplace(name, "'", "''") "' -Confirm:`$false")
+        q := "'" StrReplace(name, "'", "''") "'"
+        ; 끄기가 실패해도 오류는 출력 파일로만 간다. 상태를 다시 읽어 실제로 꺼졌을 때만 끊긴 것으로 본다.
+        if (LagSwitchPS("Disable-NetAdapter -Name " q " -Confirm:`$false; (Get-NetAdapter -Name " q ").Status") != "Disabled") {
+            LagSwitchRestore("disable failed")
+            ShowTooltip("랜선 뽑기: 어댑터 " name " 를 끄지 못함", 2500)
+            return false
+        }
         return true
     }
     try
