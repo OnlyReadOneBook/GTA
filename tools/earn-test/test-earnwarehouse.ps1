@@ -40,7 +40,7 @@ $driver = @'
 global whTests := 0, whMode, whState, whAssigned, whCounts, whActive, whSelected,
     whSelections, whAttempts, whMoves, whBegins, whEnds, whError, whHistory,
     whPending := "", whCancels := 0, whTooltips := 0, whSellStops := [], whNoticeLogs := 0, whNoticeClears := 0
-global gEarnSellNotices := Map()
+global gEarnSellNotices := Map(), gEarnSellNoticeSeen := Map()
 global whReadLogs := [], whReadCalls := [], whLogThrows := false, whCaptures := 0, whCaptureThrows := false
 try {
     RunWarehouseTests()

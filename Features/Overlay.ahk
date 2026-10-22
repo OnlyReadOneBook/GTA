@@ -171,9 +171,19 @@ MacroStatusText(compact) {
     running := RunningItems()
     afk := AFKStatusText()
     inside := config["Settings"]["MenuTopOffset"]
-    ; 오버레이는 수익 상태 한 줄만 띄운다(1017 사용자 지시: 화면을 가리지 않게, AFK 는 늘 켜져 있어 표시하지 않는다)
-    if (compact)
-        return EarnOverlayText()
+    ; 오버레이는 수익 상태 한 줄만 띄운다(1017 사용자 지시: 화면을 가리지 않게, AFK 는 늘 켜져 있어 표시하지 않는다).
+    ; 만재 판매 알림은 지금 만재인 사업장만 줄을 더한다(1022 사용자 지시). 수익이 꺼져 재확인이 없거나
+    ; 20분 넘게 다시 만재로 확인되지 않은 알림은 판매로 비었을 수 있어 띄우지 않는다(재확인 간격은 5~10분).
+    if (compact) {
+        text := EarnOverlayText()
+        if (IsSet(gEarnSellNotices) && IsSet(gEarnOn) && gEarnOn) {
+            for source, notice in gEarnSellNotices {
+                if (A_TickCount - gEarnSellNoticeSeen.Get(source, 0) < 1200000)
+                    text .= "`n💰 " notice
+            }
+        }
+        return text
+    }
     list := ""
     for item in running
         list .= (list = "" ? "" : ", ") item

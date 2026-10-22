@@ -12,6 +12,7 @@ global gEarnDue := Map()        ; 작업 id → 다음 실행 시각(A_TickCount
 global gEarnDone := Map()       ; 작업 id → 켠 뒤 성공 횟수
 global gEarnCurrent := ""       ; 지금 하는 작업 이름
 global gEarnSellNotices := Map() ; 사업장별 판매 알림. 다른 사업장 관측이나 F9 토글로 지우지 않는다.
+global gEarnSellNoticeSeen := Map() ; 사업장별 마지막 만재 확인 시각(A_TickCount). 오버레이가 오래된 알림을 숨기는 데 쓴다.
 global gEarnTasks := []
 global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각(A_TickCount). 없으면 시작 시각 + 간격
 global gEarnSoftFails := Map()   ; 작업별 연속 실패 횟수(로그용). 실패 뒤 간격을 늘리지 않는다
@@ -690,7 +691,8 @@ EarnFinishManualStop(cleanupOK, cleanupAttempted, mctSession := true) {
 
 ; 만재는 알림만 남긴다. 구매·조달을 건너뛸지는 각 작업이 판단하고, 전체 자동화 중단은 사용자가 결정한다.
 EarnNotifyStockFull(source, reason) {
-    global gEarnSellNotices
+    global gEarnSellNotices, gEarnSellNoticeSeen
+    gEarnSellNoticeSeen[source] := A_TickCount
     if (gEarnSellNotices.Get(source, "") != reason) {
         gEarnSellNotices[source] := reason
         EarnLog("재고 만재 알림: " reason " · 나머지 작업 계속")
