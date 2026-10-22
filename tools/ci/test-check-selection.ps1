@@ -39,16 +39,16 @@ foreach ($path in @('Images/Earn/1920x1080/afk_vinewood_title.png', 'Images/Earn
 }
 
 $ci = Get-CiCheckPlan @('tools/ci/run-checks.ps1')
-Check ($ci.Full -and $ci.Suites.Count -eq 43 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
+Check ($ci.Full -and $ci.Suites.Count -eq 44 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
 
 $workflow = Get-CiCheckPlan @('.github/workflows/ci.yml')
-Check ($workflow.Full -and $workflow.Suites.Count -eq 43 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
+Check ($workflow.Full -and $workflow.Suites.Count -eq 44 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
 
 $gitStylePath = Get-CiCheckPlan @('./Features/Earn/EarnStaff.ahk')
 Check (($gitStylePath.Suites -join ',') -eq 'test-earner,test-earnvinewood,test-earnstaff') 'leading ./ is normalized without losing dot-prefixed paths'
 
 $unknown = Get-CiCheckPlan @('Features/NewFeature.ahk')
-Check ($unknown.Full -and $unknown.Suites.Count -eq 43) 'unknown production paths conservatively run all suites'
+Check ($unknown.Full -and $unknown.Suites.Count -eq 44) 'unknown production paths conservatively run all suites'
 $ledger = Get-CiCheckPlan @('Features/Earn/EarnLedger.ahk')
 Check (-not $ledger.Full -and ($ledger.Suites -join ',') -eq 'test-earner,test-earnledger') 'ledger source selects transaction and scheduler checks'
 $ledgerTest = Get-CiCheckPlan @('tools/earn-test/test-earnledger.ps1')
@@ -70,4 +70,8 @@ $positionTest = Get-CiCheckPlan @('tools/earn-test/test-overlay-place.ps1')
 Check (($positionTest.Suites -join ',') -eq 'test-overlay-place') 'position test selects its registered suite'
 $frameFeed = Get-CiCheckPlan @('tools/tests/frame-feed.tests.ps1')
 Check (-not $frameFeed.Full -and ($frameFeed.Suites -join ',') -eq 'test-frame-feed') 'frame feed regression selects its registered suite'
+$steamLaunch = Get-CiCheckPlan @('tools/steam-launch/launch-gta.ps1')
+Check (-not $steamLaunch.Full -and ($steamLaunch.Suites -join ',') -eq 'test-steam-launch' -and -not $steamLaunch.PackageRequired) 'Steam launcher selects its fixture regression without packaging'
+$steamLaunchTest = Get-CiCheckPlan @('tools/tests/steam-launch.tests.ps1')
+Check (($steamLaunchTest.Suites -join ',') -eq 'test-steam-launch') 'Steam launcher test selects its registered suite'
 Write-Output "PASS CI check selection cases=$checks"
