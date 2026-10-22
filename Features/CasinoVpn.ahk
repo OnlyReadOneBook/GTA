@@ -51,7 +51,14 @@ CasinoVpnTick() {
         gCasinoVpnGtaSeen := A_TickCount
         CasinoVpnLog("GTA5_Enhanced 뜸 (+" Round((A_TickCount - gCasinoVpnStart) / 1000) "s)")
     }
-    if (gCasinoVpnGtaSeen && A_TickCount - gCasinoVpnGtaSeen >= gCasinoVpnHoldSec * 1000)
+    ; 체력 막대는 2초 간격으로 본다. 두 번 연속 보인 시각부터 hold 를 센다(0c13557 은 판정 함수만 두고 부르지 않아 exe 뜬 지 5초 만에 껐다).
+    if (gCasinoVpnGtaSeen && gCasinoVpnHudStreak < 2 && A_TickCount - gCasinoVpnHudCheck >= 2000) {
+        gCasinoVpnHudCheck := A_TickCount
+        gCasinoVpnHudStreak := CasinoVpnHudVisible() ? gCasinoVpnHudStreak + 1 : 0
+        if (gCasinoVpnHudStreak >= 2)
+            CasinoVpnLog("HUD 확인 (+" Round((A_TickCount - gCasinoVpnStart) / 1000) "s)")
+    }
+    if (gCasinoVpnHudStreak >= 2 && A_TickCount - gCasinoVpnHudCheck >= gCasinoVpnHoldSec * 1000)
         return StopCasinoVpn("HUD 확인 뒤 " gCasinoVpnHoldSec "s")
     if (A_TickCount - gCasinoVpnStart >= gCasinoVpnMaxSec * 1000)
         return StopCasinoVpn("최대 유지 시간")
