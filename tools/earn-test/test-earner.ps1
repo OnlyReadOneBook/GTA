@@ -79,7 +79,7 @@ global beginCount, endCount, beginCleanupCount, beginOK, endOK, endNoScreen, beg
 global endStopMode, bossOffCount, bossProbeOK, bossProbeCount, bossProbeStrictCount, bossProbeGuardedCount, bossProbeMode, bossStopInjected, bossInitialGuardTick, bossRetryBaselineOK, bossRetryCleanupStateOK, staleFailInjected, blockedRestartObserved
 global gEarnHeld, gEarnFailures, gEarnRecovery, appCloseOK, appCloseCount
 global gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnMCTCleanupOK, stopStatus
-global beginStopInjected, gEarnSellNotices, tooltips
+global beginStopInjected, gEarnSellNotices, gEarnSellNoticeSeen, tooltips
 global lifecycleTrace, lifecycleEvents, finalizerProbeStages
 global gEarnInputAbortReason, metadataFailure, metadataCalls
 global recoveryHud, recoveryHudAfter, recoveryMenuCloseOK, visibleModal
@@ -1052,7 +1052,7 @@ Reset() {
     gEarnManualStop := false, gEarnManualCleanupActive := false, gEarnManualCleanupAttempted := false
     gEarnTaskActive := false, gEarnAFKCleanup := false, gEarnMCTCleanupOK := true, stopStatus := ""
     beginStopInjected := false
-    gEarnSellNotices := Map(), tooltips := []
+    gEarnSellNotices := Map(), gEarnSellNoticeSeen := Map(), tooltips := []
     endStopMode := "", bossOffCount := 0, bossProbeOK := true, bossProbeCount := 0, bossProbeStrictCount := 0, bossProbeGuardedCount := 0
     bossProbeMode := "", bossStopInjected := false, bossInitialGuardTick := 0, bossRetryBaselineOK := false, bossRetryCleanupStateOK := false
     staleFailInjected := false, blockedRestartObserved := false
