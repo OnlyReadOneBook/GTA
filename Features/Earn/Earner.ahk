@@ -34,10 +34,14 @@ global gEarnAFKCleanup := false
 ; AFK 방지가 오래 방치된 MCT 화면을 만나면 수익 작업과 같은 확인된 정리 경로(확인창 취소 → MCT 닫기 → 일어서기 → 사장 해제)로 닫는다.
 ; 수익 작업이 도는 중에는 건드리지 않는다. 열린 MCT 화면이 안 보이면 아무 입력도 하지 않고 빈 문자열을 돌려준다.
 EarnAFKCloseMCT(idleSec) {
-    global gEarnBusy, gAbort, gEarnMode
+    global gEarnOn, gEarnBusy, gAbort, gEarnMode, gEarnRecovery
     if (gEarnMode = "apps")
         return ""
     if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
+        return ""
+    ; 정리 복구가 걸려 있으면 같은 정리를 EarnTick 이 맡는다. AFK 는 마우스 왕복·전면화만 한다.
+    ; 수익이 꺼진 뒤 남은 복구는 아무도 이어 하지 않으니 이 경우엔 AFK 가 정리한다.
+    if (gEarnOn && IsObject(gEarnRecovery))
         return ""
     started := A_TickCount
     if (!IsGTAActive() || A_TimeIdlePhysical < A_TickCount - started)
@@ -284,7 +288,7 @@ EarnEnabledText() {
 }
 
 EarnTick() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gAbort, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnInputAbortReason, config, afkOn, afkNextDue
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gEarnCleanupTimedOut, gAbort, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnInputAbortReason, config, afkOn, afkNextDue
     if (!gEarnOn || gEarnBusy)
         return
     if (!gEarnGamePID || EarnGamePID() != gEarnGamePID) {
@@ -299,8 +303,10 @@ EarnTick() {
         return
     now := A_TickCount
     recovering := IsObject(gEarnRecovery)
-    if (recovering && now < gEarnRecovery.nextTick)
+    if (recovering && now < gEarnRecovery.nextTick) {
+        EarnAFKTick()
         return
+    }
     task := recovering ? gEarnRecovery.task : ""
     if (!recovering) {
         ; 짧은 재관측 주기의 앞 작업이 이미 만료돼도 더 오래 기다린 뒤쪽 작업을 계속 굶기지 않는다.
@@ -311,10 +317,8 @@ EarnTick() {
                 task := t
         }
     }
-    ; 할 작업이 없는 틈에는 AFK 입력을 넣는다. 간격·포커스 복귀·화면 정리 판정은 AntiAFKTick 이 그대로 한다.
     if (!IsObject(task)) {
-        if (IsSet(afkOn) && afkOn)
-            try %"AntiAFKTick"%()
+        EarnAFKTick()
         return
     }
     ; 시작 시점에 실행할 차례이거나 EarnMCTBatchAheadSec(기본 120초) 안에 차례가 될 MCT 작업을 묶는다. 진행 중 새로 due가 된 작업은 다음 회차다.
@@ -337,6 +341,8 @@ EarnTick() {
         ; 1초 tick 마다 이 분기로 되돌아와 같은 로그가 매초 쌓인다(1009 02:43 부터 하루 1,351줄).
         if (recovering)
             gEarnRecovery.nextTick := now + 30000
+        ; GTA 를 앞으로 가져오는 건 AntiAFKTick 뿐이다. 복구가 걸린 동안 그걸 안 부르면 다른 창이 앞인 채로 영영 멈췄다(1023 04:30).
+        EarnAFKTick()
         return
     }
     try inputLock := EarnInputLockAcquire()
@@ -354,13 +360,13 @@ EarnTick() {
     ; 이 작업이 보내는 키를 방치 판정(AFKOthersIdleMs)이 남의 입력으로 세지 않게 한다. 안 그러면 몇 분마다 도는 MCT 작업 때문에
     ; 방치 5분에 닿지 못해 CPU 부스트·프레임 제한이 한 번도 안 걸렸다(1005 13:10~16:30, 핫스팟 95°C. 제한 때는 62~67°C).
     try %"AFKSelfInput"%(true)
-    outcome := {results: [], cleanupOK: true}
+    ; 복구는 첫 입력 확인에서 바로 막혀도 지난 묶음 결과를 들고 간다. 빈 결과로 바꾸면 본문을 끝낸 작업의 예약이 지워진다.
+    outcome := recovering ? gEarnRecovery.outcome : {results: [], cleanupOK: true}
     fatalReason := ""
     try {
         EarnInputGuardStart()
         if (EarnInputAllowed()) {
             if (recovering) {
-                outcome := gEarnRecovery.outcome
                 outcome.cleanupOK := gEarnRecovery.mct ? EarnTaskMCTEndWithManualRetry() : EarnVinewoodClose()
             } else if (mctSession)
                 outcome := EarnRunMCTBatch(dueTasks)
@@ -378,7 +384,8 @@ EarnTick() {
         }
         ; 화면을 못 알아본 채 다음 시도까지 아무 입력도 없으면 방치로 세어진다(1020 17:35~17:49 61회 무입력 끝에 추방).
         ; 뒤로(Backspace)는 확인창에서는 취소, MCT 화면에서는 한 단계 나가기라 돈이 나가지 않는다. 누른 뒤 결과는 다음 시도의 화면 확인이 다시 본다.
-        if (recovering && mctSession && !outcome.cleanupOK && gEarnCleanupNoScreen && EarnInputAllowed()) {
+        ; 판독이 느려 목록을 다 못 훑고 마감된 경우도 같다. MCT 화면 안에서는 AFK 마우스 왕복이 방치를 못 막는다.
+        if (recovering && mctSession && !outcome.cleanupOK && (gEarnCleanupNoScreen || gEarnCleanupTimedOut) && EarnInputAllowed()) {
             EarnLog("복구: " task.id " 화면 미인식 → 뒤로(Backspace) 한 번 뒤 다시 확인")
             EarnPress("Backspace")
         }
@@ -406,9 +413,11 @@ EarnTick() {
     ; F9 수동 종료는 새 작업 입력을 즉시 막되, 이미 연 MCT의 확인된 정리와 CEO 해제까지 끝낸 뒤 꺼진다.
     ; 정리 기준점을 다시 잡은 뒤 생긴 End·사용자 입력·포커스 이탈은 gAbort를 다시 켜므로 성공으로 덮지 않는다.
     ; 끝까지 한 작업의 입력은 방치 킥을 막는 입력이기도 하다. 그 뒤 AFK 입력은 한 간격 뒤로 민다.
-    for result in outcome.results
-        if (result.ok)
-            afkNextDue := A_TickCount + config["Settings"].Get("AFKIntervalSec", 200) * 1000
+    ; 복구 시도는 지난 묶음 결과를 다시 쓸 뿐 본문을 돌리지 않는다. 여기서도 밀면 시도마다 200초씩 밀려 AFK 입력이 한 번도 안 나간다.
+    if (!recovering)
+        for result in outcome.results
+            if (result.ok)
+                afkNextDue := A_TickCount + config["Settings"].Get("AFKIntervalSec", 200) * 1000
     if (gEarnUserAbort && gEarnInputAbortReason != "")
         gEarnFail := gEarnInputAbortReason
     if (gEarnManualStop) {
@@ -422,15 +431,20 @@ EarnTick() {
         gAbort := false
         if (!outcome.cleanupOK || recovering)
             gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: 0, nextTick: A_TickCount}
-        finished := Map()
+        finished := Map(), bodyDone := Map()
         for result in outcome.results {
             if (result.ok && outcome.cleanupOK && !recovering) {
                 EarnFinishScheduledTask(result)
                 finished[result.task.id] := true
-            }
+            } else if (result.ok)
+                bodyDone[result.task.id] := true
         }
         for t in dueTasks {
             if (finished.Has(t.id))
+                continue
+            ; 본문을 끝낸 작업은 정리 복구가 끝날 때 원래 결과로 확정한다. 스스로 잡은 다음 확인을 지우면 기본 간격으로 밀린다
+            ; (1023 04:25 보급 3% 벙커의 경계 재확인이 06:16:59 로 밀렸다).
+            if (bodyDone.Has(t.id))
                 continue
             pending := EarnHoldsPending(t.id) ? EarnStateGet("pending_" t.id) : ""
             if (pending != "") {
@@ -459,6 +473,9 @@ EarnTick() {
         delay := 0
         gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: attempts, nextTick: A_TickCount + delay}
         EarnLog("복구 대기: " task.id " 정리 미확인 (" gEarnFail ") → 확인된 정리 경로 바로 재시도; 수익 작업 대기")
+        ; 알아본 화면에서 HUD 확인에 막히면 정리는 키를 하나도 안 보낸다. 1023 05:31 부터 이렇게 무입력으로 돌다 방치 킥을 당했다(06:04 녹화).
+        ; 시도 사이마다 AFK 마우스 왕복(간격은 AntiAFKTick 이 지킨다)을 넣어 재시도가 길어져도 입력이 끊기지 않게 한다.
+        EarnAFKTick()
         return
     }
     if (recovering) {
@@ -471,6 +488,13 @@ EarnTick() {
         if (!gEarnOn)
             return
     }
+}
+
+; 할 작업이 없거나 복구 차례를 기다리는 틈에 AFK 입력을 넣는다. 간격·포커스 복귀·화면 정리 판정은 AntiAFKTick 이 그대로 한다.
+EarnAFKTick() {
+    global afkOn
+    if (IsSet(afkOn) && afkOn)
+        try %"AntiAFKTick"%()
 }
 
 ; 앱 직원 파견은 이미 보낸 요원·조달 중인 창고를 게임이 비활성으로 막아 재요청해도 돈이 다시 나가지 않는다.

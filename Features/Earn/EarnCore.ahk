@@ -5,6 +5,7 @@
 global gEarnBusy := false        ; 수익 자동화가 게임에 키를 보내는 중. AFK 방지가 이 동안 쉰다
 global gEarnFail := ""           ; 마지막으로 멈춘 까닭 (오버레이·설정 창·로그에 보인다)
 global gEarnCleanupNoScreen := false  ; 마지막 MCT 정리가 "열린 MCT 화면 없음"으로 실패했는가
+global gEarnCleanupTimedOut := false  ; 마지막 MCT 정리가 아무 화면도 못 알아본 채 마감됐는가(목록을 다 못 훑은 경우 포함)
 global gEarnSkipOcr := false      ; 카메라 회전 중에는 판독마다 1~2초 걸리는 OCR 대체 경로를 건너뛴다(끝난 뒤 최종 확인이 OCR 을 쓴다)
 global gEarnRetryIn := 0          ; 작업이 지정한 재시도 간격. 0이면 스케줄러의 기본 backoff를 쓴다
 

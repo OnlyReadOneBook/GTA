@@ -753,7 +753,7 @@ ExitApp(0)
     $mctEndDriver += "`n" + $mctCleanupSupport
     Invoke-EarnOfflineCheck 'MCTEnd' 'EarnTaskMCTEnd' $mctEndDriver 35
     $deadlineDriver = @'
-global endScene := "unknown", endFailure := "", endOrder := "", endAbort := false, endBoss := true, gEarnFail := "original", endLogs := []
+global endScene := "unknown", endFailure := "", endOrder := "", endAbort := false, endBoss := true, gEarnFail := "original", endLogs := [], gEarnCleanupNoScreen := false, gEarnCleanupTimedOut := false
 global clockMs := 0, reads := 0, abortRead := 0, foundRead := 0
 for scenario in [0,1,2,3] {
     interrupted := scenario = 1
@@ -761,6 +761,9 @@ for scenario in [0,1,2,3] {
     result := EarnTaskMCTEnd()
     if (result || endOrder != "" || gEarnFail != "original")
         throw Error("Slow cleanup must not input or erase the original failure")
+    ; 목록을 다 못 훑고 마감돼도(0) 다 훑고 못 찾아도(3) 미인식으로 남겨 복구가 뒤로 한 번을 보내게 한다.
+    if (gEarnCleanupTimedOut != (scenario = 0 || scenario = 3) || gEarnCleanupNoScreen != (scenario = 3))
+        throw Error("Cleanup timeout marks are wrong: scenario=" scenario " timedOut=" gEarnCleanupTimedOut " noScreen=" gEarnCleanupNoScreen)
     if (reads != (scenario = 3 ? 720 : interrupted ? 2 : 11) || clockMs != (scenario = 3 ? 12000 : interrupted ? 2200 : 12100))
         throw Error("Cleanup exceeded its elapsed deadline: reads=" reads " elapsed=" clockMs)
     for message in endLogs

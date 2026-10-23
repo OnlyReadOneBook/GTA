@@ -625,8 +625,8 @@ EarnMCTRefresh() {
 }
 
 EarnTaskMCTEnd() {
-    global gEarnFail, gEarnCleanupNoScreen
-    gEarnCleanupNoScreen := false
+    global gEarnFail, gEarnCleanupNoScreen, gEarnCleanupTimedOut
+    gEarnCleanupNoScreen := false, gEarnCleanupTimedOut := false
     originalFailure := IsSet(gEarnFail) ? gEarnFail : ""
     try {
         if (EarnAborted())
@@ -666,6 +666,8 @@ EarnTaskMCTEnd() {
         ; 마감 뒤에 끝난 판독은 믿지 않는다. 목록을 한 바퀴 이상 다 보고도 못 찾았을 때만 '열린 화면 없음'으로 표시한다.
         if (A_TickCount >= deadline) {
             gEarnCleanupNoScreen := scanned && !known
+            ; 목록을 다 못 훑고 마감돼도 화면을 못 알아본 건 같다. 복구가 뒤로 한 번을 보내는 근거로만 쓴다(사장 해제는 위 표시만 본다).
+            gEarnCleanupTimedOut := !known
             return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
         }
         if (EarnUIReady("bunker_confirm")) {
