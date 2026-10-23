@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnScopeLabel', 'EarnHoldsPending', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
+$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnScopeLabel', 'EarnHoldsPending', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure', 'EarnAFKTick') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -716,6 +716,63 @@ fakeTick += 1000
 EarnTick()
 Check(FocusWaitLogCount() = focusWaitLogs + 2 && IsObject(gEarnRecovery), "recovery without focus logs again only after the 30-second wait")
 Reset()
+afkOn := true
+endOK := false
+EarnTick()
+Check(IsObject(gEarnRecovery) && afkTicks = 1 && backPresses = 0,
+    "a cleanup that fails on a recognized screen without sending a key hands the gap to AFK")
+fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 2 && afkTicks = 2 && backPresses = 0,
+    "every silent recovery retry gives AFK another turn so a long recovery cannot idle-kick")
+focused := false, fakeTick := gEarnRecovery.nextTick
+endBefore := endCount
+EarnTick()
+Check(afkTicks = 3 && FocusWaitLogCount() = 1 && endCount = endBefore,
+    "recovery without GTA focus lets AFK refocus instead of waiting for the user")
+fakeTick += 1000
+EarnTick()
+Check(afkTicks = 4 && endCount = endBefore && IsObject(gEarnRecovery),
+    "AFK keeps its turn on every tick while the recovery waits out its focus delay")
+Reset()
+mctOpen := true
+gEarnRecovery := {task: gEarnTasks[1], tasks: [gEarnTasks[1]], mct: true, outcome: {results: [], cleanupOK: false}, attempts: 1, nextTick: fakeTick}
+Check(EarnAFKCloseMCT(400) = "" && endCount = 0 && !gEarnBusy,
+    "AFK screen guard leaves MCT cleanup to the pending scheduler recovery")
+gEarnOn := false
+Check(InStr(EarnAFKCloseMCT(400), "MCT 화면 정리 완료") && endCount = 1,
+    "a recovery left behind after earn stops no longer blocks the AFK screen guard")
+Reset()
+afkOn := true
+endOK := false
+EarnTick()
+Loop 15 {
+    fakeTick := gEarnRecovery.nextTick + 17000
+    EarnTick()
+}
+Check(IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && afkPulses >= 1,
+    "silent recovery after successful bodies does not keep pushing the AFK pulse out")
+Reset()
+endOK := false, endNoScreen := false, endTimedOut := true
+EarnTick()
+Loop 3 {
+    fakeTick := gEarnRecovery.nextTick
+    EarnTick()
+}
+Check(IsObject(gEarnRecovery) && backPresses = 3 && bossOffCount = 0 && gEarnDone["bunker"] = 0,
+    "cleanup that times out before a full scan still sends one back press per retry without boss-menu input")
+Reset()
+taskModes["bunker"] := "override-short", taskModes["dj"] := "physical"
+EarnTick()
+bunkerNext := gEarnNextDue.Get("bunker", 0)
+Check(IsObject(gEarnRecovery) && bunkerNext > 0 && gEarnDone["bunker"] = 0,
+    "user abort after the bunker body keeps its own next check while cleanup recovery waits")
+idleMs := 5000, fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(!IsObject(gEarnRecovery) && gEarnDone["bunker"] = 1 && gEarnDue["bunker"] <= Max(fakeTick + 60000, bunkerNext)
+    && !gEarnNextDue.Has("bunker"),
+    "recovery after a user abort finalizes the bunker on its own short check, not the full interval")
+Reset()
 mode := "physical"
 EarnTick()
 Check(gEarnOn && !gAbort && stopped = 0 && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnRetryIn = 0
@@ -1036,9 +1093,19 @@ AFKSelfInput(start) {
     global selfMarks
     selfMarks .= start ? "S" : "E"
 }
+AntiAFKTick() {
+    global afkTicks, afkPulses, afkNextDue
+    if (gEarnBusy || lockHeld)
+        throw Error("AFK input must run outside the earn task and its input lock")
+    afkTicks++
+    ; 실제 AntiAFKTick 처럼 afkNextDue 전에는 마우스 왕복을 보내지 않는다.
+    if (afkNextDue && A_TickCount < afkNextDue)
+        return
+    afkPulses++, afkNextDue := A_TickCount + 200000
+}
 Reset() {
     global
-    gEarnMode := "full", gEarnModeRequest := "", gEarnIdleEnabled := false, backPresses := 0
+    gEarnMode := "full", gEarnModeRequest := "", gEarnIdleEnabled := false, backPresses := 0, afkTicks := 0, afkPulses := 0, afkNextDue := 0
     hudInject := ""
     selfMarks := ""
     fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gEarnUserAbort := false
@@ -1057,7 +1124,7 @@ Reset() {
     bossProbeMode := "", bossStopInjected := false, bossInitialGuardTick := 0, bossRetryBaselineOK := false, bossRetryCleanupStateOK := false
     staleFailInjected := false, blockedRestartObserved := false
     recoveryHud := true, recoveryHudAfter := true, recoveryMenuCloseOK := true, visibleModal := ""
-    gEarnCleanupNoScreen := false
+    gEarnCleanupNoScreen := false, gEarnCleanupTimedOut := false, endTimedOut := false
     lifecycleTrace := false, lifecycleEvents := [], finalizerProbeStages := []
     gEarnDue := Map("bunker", A_TickCount - 1, "dj", A_TickCount - 1)
     gEarnHeld := Map(), gEarnFailures := Map(), gEarnRecovery := "", appCloseOK := true, appCloseCount := 0, state := Map(), stateWritable := true
@@ -1221,6 +1288,9 @@ SetTimer(fn, period) {
         modeTimer := period
         return
     }
+    ; 수익이 켜지면 AFK 자체 타이머를 끈다. 스케줄러 타이머 개수에는 넣지 않는다.
+    if (fn.Name = "AntiAFKTick")
+        return
     if (lifecycleTrace && fn.Name = "EarnInputWatch")
         lifecycleEvents.Push(period = 0 ? "guard-stop" : "guard-start")
     timers.Push(period)
@@ -1391,8 +1461,8 @@ EarnTaskMCTEnd() {
     if (endThrows)
         throw Error("end exception")
     if (!endOK || gAbort) {
-        global gEarnCleanupNoScreen
-        gEarnCleanupNoScreen := endNoScreen
+        global gEarnCleanupNoScreen, gEarnCleanupTimedOut
+        gEarnCleanupNoScreen := endNoScreen, gEarnCleanupTimedOut := endNoScreen || endTimedOut
         return EarnFail("end failed")
     }
     mctOpen := false
@@ -1472,7 +1542,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 228 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 238 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
