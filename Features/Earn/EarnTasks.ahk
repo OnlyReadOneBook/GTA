@@ -32,12 +32,19 @@ EarnGoTo(place, dir, blip, altBlip := "") {
 
 ; 스폰 위치는 그대로 두고 초대 전용 세션으로 다시 들어가 place 안인지 확인한다.
 EarnRejoin(place) {
+    return EarnRejoinSession(place) && EarnCheckPlace(place)
+}
+
+; 스폰 위치는 그대로 두고 초대 전용 세션으로 다시 들어가 게임 화면(체력 막대)이 돌아올 때까지 기다린다. 장소는 확인하지 않는다.
+; 휴대폰·MCT 가 게임 문제로 안 먹을 때의 재접속(EarnGlitchRejoin)은 어느 부동산에서 시작하든 상관없어 이것만 쓴다.
+EarnRejoinSession(label := "") {
     global config
     s := config["Settings"]
+    tag := label = "" ? "" : " (" label ")"
     if (EarnAborted())
         return EarnFail("재접속: 멈춤·포커스 이탈")
     if (!JoinInviteOnlySession(false))
-        return EarnFail("세션 이동 메뉴를 확인하지 못함 (" place ")")
+        return EarnFail("세션 이동 메뉴를 확인하지 못함" tag)
     if (!EarnSleep(s["EarnLoadMinSec"] * 1000))
         return EarnFail("재접속 대기 중 멈춤·포커스 이탈")
     deadline := A_TickCount + s["EarnLoadTimeoutSec"] * 1000
@@ -52,9 +59,7 @@ EarnRejoin(place) {
     }
     if (streak < 2)
         return EarnFail("재접속: " s["EarnLoadTimeoutSec"] "초 안에 게임 화면(체력 막대)이 안 보임")
-    if (!EarnSleep(2000))
-        return false
-    return EarnCheckPlace(place)
+    return EarnSleep(2000)
 }
 
 ; MCT 전용 접근 안내나 사업장 목록으로 도착을 확인한다. 일반 앉기 안내는 공통이라 쓰지 않는다.
