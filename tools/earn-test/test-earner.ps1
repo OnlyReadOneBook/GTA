@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnScopeLabel', 'EarnHoldsPending', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure', 'EarnAFKTick') | ForEach-Object {
+$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnScopeLabel', 'EarnHoldsPending', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure', 'EarnAFKTick', 'EarnMCTTasksActive', 'EarnGlitchRejoinDue', 'EarnGlitchRejoin') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -24,7 +24,7 @@ $runningItems = [regex]::Match($overlay, '(?ms)^RunningItems\(\) \{.*?^\}').Valu
 if (-not $runningItems) { throw 'Production RunningItems missing' }
 $production += "`n" + $runningItems
 $core = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
-foreach ($functionName in @('EarnTransactionBegin','EarnTransactionConfirmed')) {
+foreach ($functionName in @('EarnTransactionBegin','EarnTransactionConfirmed','EarnGlitchNote')) {
     $production += "`n" + [regex]::Match($core, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
 }
 $mctSitMatcher = [regex]::Match($core, '(?ms)^EarnMCTSitOcrMatches\([^\r\n]*\) \{.*?^\}').Value
@@ -78,6 +78,7 @@ global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, gEarnUserAbort, l
 global beginCount, endCount, beginCleanupCount, beginOK, endOK, endNoScreen, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
 global endStopMode, bossOffCount, bossProbeOK, bossProbeCount, bossProbeStrictCount, bossProbeGuardedCount, bossProbeMode, bossStopInjected, bossInitialGuardTick, bossRetryBaselineOK, bossRetryCleanupStateOK, staleFailInjected, blockedRestartObserved
 global gEarnHeld, gEarnFailures, gEarnRecovery, appCloseOK, appCloseCount
+global gEarnGlitch := Map("mct", 0, "phone", 0), rejoinCalls := 0, rejoinOK := true, gEarnMCTSeenTick := 0
 global gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnMCTCleanupOK, stopStatus
 global beginStopInjected, gEarnSellNotices, gEarnSellNoticeSeen, tooltips
 global lifecycleTrace, lifecycleEvents, finalizerProbeStages
@@ -1081,6 +1082,51 @@ for appId in ["safe", "staff"] {
     else
         Check(gEarnHeld.Has(appId) && gEarnFailures[appId].nextTick = 0, "pending app remains held without repeat scheduling: " appId)
 }
+; 휴대폰·MCT 무반응 재접속(1010 07:30~08:18 두 실패가 나란히 쌓인 뒤로도 아무도 재접속하지 않았다).
+; MCT 묶음이 본문에 못 들어가면 MCT 무반응으로 센다. 사용자 입력으로 끊긴 것은 세지 않는다.
+Reset()
+beginOK := false
+EarnTick()
+Check(gEarnGlitch["mct"] = 1 && rejoinCalls = 0, "unopened MCT batch counts one MCT unresponsive")
+; 전체 수익: 휴대폰과 MCT 가 둘 다 기준 횟수(2)에 닿아야 재접속한다. 재접속 뒤에는 묶음을 열지 않고 유휴 앱 모드를 요청한다.
+Reset()
+beginOK := false
+gEarnGlitch["phone"] := 2
+EarnTick()
+Check(gEarnGlitch["mct"] = 1 && rejoinCalls = 0 && beginCount = 1, "phone alone does not rejoin while MCT tasks are on")
+EarnTick()
+Check(gEarnGlitch["mct"] = 2 && rejoinCalls = 0 && beginCount = 2, "second unopened batch reaches the MCT threshold without rejoining yet")
+EarnTick()
+Check(rejoinCalls = 1 && beginCount = 2 && gEarnModeRequest = "apps" && gEarnIdleEnabled && gEarnMCTSeenTick = 0
+    && gEarnGlitch["mct"] = 0 && gEarnGlitch["phone"] = 0 && gEarnDue["bunker"] = fakeTick + 180000
+    && HasLog("재접속: 휴대폰 2회·MCT 2회") && HasLog("F9 두 번"),
+    "both unresponsive rejoins once, skips the batch, and drops MCT earning to apps mode")
+gEarnBusy := false
+EarnModeTick()
+Check(gEarnMode = "apps" && !EarnMCTTasksActive(), "apps mode after the rejoin stops MCT attempts until F9")
+; 재접속을 확인하지 못했으면 자리를 그대로 보고 모드를 바꾸지 않는다.
+Reset()
+beginOK := false, rejoinOK := false
+gEarnGlitch["phone"] := 2, gEarnGlitch["mct"] := 2
+EarnTick()
+Check(rejoinCalls = 1 && beginCount = 0 && gEarnModeRequest = "" && gEarnMode = "full" && gEarnMCTSeenTick = 12345
+    && gEarnGlitch["phone"] = 0 && HasLog("재접속 미확인"),
+    "unconfirmed rejoin keeps full mode and resets the counts for a later attempt")
+; 유휴 앱 모드: MCT 작업이 없으니 휴대폰만 기준 횟수에 닿으면 앱을 열기 전에 재접속하고 그대로 앱을 연다.
+Reset()
+gEarnMode := "apps"
+gEarnTasks := [{id:"safe", label:"safe", on:true, every:300000, fn:RunTask.Bind("safe")}]
+gEarnDue := Map("safe", 0), gEarnDone := Map("safe", 0)
+gEarnGlitch["phone"] := 2
+EarnTick()
+Check(rejoinCalls = 1 && events.Length = 2 && events[1] = "rejoin" && events[2] = "safe" && gEarnDone["safe"] = 1
+    && gEarnModeRequest = "" && HasLog("재접속 완료: 바인우드 작업 계속"),
+    "apps mode rejoins on phone failures alone and then runs the app task")
+Reset()
+gEarnGlitch["phone"] := 2, gEarnGlitch["mct"] := 2
+config["Settings"]["EarnGlitchRejoinFails"] := 0
+EarnTick()
+Check(rejoinCalls = 0 && beginCount = 1, "EarnGlitchRejoinFails=0 disables the rejoin")
 FileAppend("PASS Earner: " checkCount " cases; no game input`n", "*")
 if (hudDepth != 0 || hudTakes != 0 || hudReturns != 0)
     throw Error("Scheduler must not acquire task-wide HUD hiding")
@@ -1151,9 +1197,10 @@ Reset() {
     lifecycleTrace := false, lifecycleEvents := [], finalizerProbeStages := []
     gEarnDue := Map("bunker", A_TickCount - 1, "dj", A_TickCount - 1)
     gEarnHeld := Map(), gEarnFailures := Map(), gEarnRecovery := "", appCloseOK := true, appCloseCount := 0, state := Map(), stateWritable := true
+    gEarnGlitch := Map("mct", 0, "phone", 0), rejoinCalls := 0, rejoinOK := true, gEarnMCTSeenTick := 12345
     gEarnDone := Map("bunker", 0, "dj", 0), gEarnNextDue := Map(), gEarnSoftFails := Map()
     gEarnTasks := [{id:"bunker", label:"bunker", on:true, every:300000, fn:RunTask.Bind("bunker")}, {id:"dj", label:"dj", on:true, every:300000, fn:RunTask.Bind("dj")}]
-    config := Map("Settings", Map("EarnUserIdleSec", 2, "EarnSoftFailMax", 1, "EarnMCTOnly",1,
+    config := Map("Settings", Map("EarnUserIdleSec", 2, "EarnSoftFailMax", 1, "EarnMCTOnly",1, "EarnGlitchRejoinFails", 2,
         "EarnSafe",1,"EarnSafeIntervalMin",5,"EarnSafeFirstMin",0,"EarnBunker",1,"EarnBunkerIntervalSec",6720,
         "EarnDJ",1,"EarnDJIntervalMin",5,"EarnDispatch",0,"EarnDispatchIntervalMin",48,"EarnDispatchFirstMin",0),
         "Features", Map("AntiAFK", 0))
@@ -1304,6 +1351,14 @@ EarnFail(reason) {
 }
 SetAntiAFK(*) {
     throw Error("unexpected AFK call")
+}
+; 초대 전용 세션 재접속. 같은 입력 잠금·감시 안에서만 부른다.
+EarnRejoinSession(*) {
+    global rejoinCalls, rejoinOK
+    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed)
+        throw Error("Session rejoin must run inside the task input lock and guard")
+    rejoinCalls++, events.Push("rejoin")
+    return rejoinOK
 }
 SetTimer(fn, period) {
     global timers, stopped, lifecycleTrace, lifecycleEvents, modeTimer
@@ -1572,7 +1627,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 242 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 250 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

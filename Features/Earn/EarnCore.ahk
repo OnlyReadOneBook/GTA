@@ -104,6 +104,16 @@ EarnScheduleNext(id, ms) {
     return true
 }
 
+; 게임 문제로 입력이 안 먹는 횟수. "phone" 은 Up 을 보내도 전화가 안 열리거나 앱이 안 열린 연속 횟수,
+; "mct" 는 MCT 묶음이 접근 안내·화면을 못 열어 본문에 못 들어간 연속 횟수. 성공하면 0 으로 돌아간다.
+; 둘 다 EarnGlitchRejoinFails 에 닿으면 Earner 가 초대 전용 세션으로 다시 들어간다(EarnGlitchRejoin).
+global gEarnGlitch := Map("mct", 0, "phone", 0)
+EarnGlitchNote(kind, failed) {
+    global gEarnGlitch
+    gEarnGlitch[kind] := failed ? gEarnGlitch[kind] + 1 : 0
+    return failed
+}
+
 ; 전체 멈춤(End) 또는 GTA 가 앞이 아님
 ; 길찾기·재접속처럼 위험하지 않은 실패: 스케줄러를 끄지 않고 retryMin 분 뒤에 같은 작업을 다시 하게 한다 (캐릭터는 그 자리에 서 있을 뿐이다)
 EarnSoftFail(reason, retryMin) {

@@ -331,7 +331,7 @@ EarnVinewoodOpen(manageMCT := true) {
     if (!IsObject(lines))
         return false
     if (EarnFindText(lines, "i)^THE VINEWOOD CLUB APP$"))
-        return true
+        return !EarnGlitchNote("phone", false)
     phoneTitle := EarnVinewoodPhoneTitle()
     jobList := EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73]) || phoneTitle = "Job List"
     vinewood := EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73]) || phoneTitle = "Vinewood Club"
@@ -403,8 +403,9 @@ EarnVinewoodOpen(manageMCT := true) {
             jobList := true
             break
         }
+        ; Up 을 보냈는데 전화가 안 뜬 것이다. 게임 문제로 입력이 안 먹는 연속 횟수로 센다(EarnGlitchNote).
         if (A_TickCount >= deadline || !EarnSleep(200))
-            return EarnFail("금고: 전화 홈 화면 미확인")
+            return EarnFail("금고: 전화 홈 화면 미확인") || !EarnGlitchNote("phone", true)
     }
     if (jobList) {
         if (!EarnPress("Right"))
@@ -416,12 +417,12 @@ EarnVinewoodOpen(manageMCT := true) {
         if (!EarnPress("Backspace"))
             return false
         gEarnRetryIn := 0
-        return EarnFail("금고: 전화 홈에서 Vinewood Club 앱 선택 미확인")
+        return EarnFail("금고: 전화 홈에서 Vinewood Club 앱 선택 미확인") || !EarnGlitchNote("phone", true)
     }
     if (!EarnPress("Enter") || !EarnSleep(700))
         return false
     return EarnFindText(EarnReadScreen([25,15,450,500]), "i)^THE VINEWOOD CLUB APP$")
-        ? true : EarnFail("금고: Vinewood Club 앱이 열리지 않음")
+        ? !EarnGlitchNote("phone", false) : (EarnFail("금고: Vinewood Club 앱이 열리지 않음") || !EarnGlitchNote("phone", true))
 }
 
 EarnVinewoodClose() {

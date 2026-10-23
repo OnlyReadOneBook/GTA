@@ -61,7 +61,7 @@ EarnTransactionCashConfirmed(id, direction, amount, source, evidence, path := ""
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhoneFrameVisible, gTests := 0
 global gNowMs := 0, gSleepMs := 0, gTimedReads := 0
 global gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gConfirmCalls := 0, gCashMovements := [], gCashFail := false
-global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map()
+global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map(), gGlitch := Map()
 global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
 IsGTAActive() => false
 EarnAborted() => gAbort
@@ -387,6 +387,22 @@ RunTests() {
     Reset("normal", "phone_vinewood")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 1
         && gKeys[1] = "Enter", "selected Vinewood home opens directly without changing phone selection")
+    ; 휴대폰 무반응은 Up 을 보낸 뒤 전화가 안 뜬 연속 횟수로 센다. 앱이 열리면 0 으로 돌아간다(재접속 판정은 Earner).
+    gGlitch.Clear()
+    Loop 2 {
+        Reset("phone_dead", "hud")
+        Check(!EarnVinewoodOpen() && gState = "hud" && gKeys.Length = 1 && gKeys[1] = "Up" && InStr(gFailure, "전화 홈 화면 미확인"),
+            "dead phone fails after one Up without further keys (" A_Index ")")
+    }
+    Check(gGlitch["phone"] = 2, "dead phone counts consecutive unanswered Ups")
+    Reset("right_stuck", "phone_job")
+    EarnVinewoodOpen()
+    Check(gGlitch["phone"] = 3, "unconfirmed Vinewood selection also counts as phone unresponsive")
+    Reset("normal", "hud")
+    Check(EarnVinewoodOpen() && gGlitch["phone"] = 0, "opened Vinewood app resets the phone unresponsive count")
+    Reset("normal", "pause_menu")
+    EarnVinewoodOpen()
+    Check(gGlitch["phone"] = 0, "waiting for a free HUD sends nothing and is not counted as unresponsive")
 
     Reset("normal", "earnings")
     Check(EarnVinewoodNightclubAmount(Frame("Claim $250,000 from your Nightclub safe.")) = 250000, "comma-formatted detail amount")
@@ -522,6 +538,8 @@ EarnPress(key) {
             gState := "phone_job"
         else if (gState != "standing" && gState != "hud")
             throw Error("Phone-opening Up is invalid when the phone is already open: " gState)
+        else if (gMode = "phone_dead")
+            gState := gState   ; 게임 문제로 Up 이 안 먹는다(1010 07:59~08:18 「전화 홈 화면 미확인」 10회)
         else
             gState := gMode = "wrong_phone" ? "wrong_phone" : (gMode = "phone_texts" || gMode = "phone_texts_hdr" || gMode = "phone_texts_internet") ? "phone_texts" : "phone_job"
     } else if (key = "Right" && gState = "phone_job") {
@@ -627,6 +645,12 @@ EarnFail(message) {
     global gFailure
     gFailure := message
     return false
+}
+; 실제 EarnGlitchNote(EarnCore)처럼 연속 횟수를 센다. 휴대폰 무반응 재접속 판정(Earner)이 이 값을 본다.
+EarnGlitchNote(kind, failed) {
+    global gGlitch
+    gGlitch[kind] := failed ? gGlitch.Get(kind, 0) + 1 : 0
+    return failed
 }
 EarnScheduleNext(id, ms) {
     global gScheduled

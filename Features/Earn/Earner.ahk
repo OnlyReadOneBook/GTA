@@ -537,6 +537,9 @@ EarnRunScheduledTask(task, mctSession := false) {
     gEarnFail := ""
     try {
         EarnLog("시작: " task.label)
+        ; 휴대폰·MCT 가 게임 문제로 안 먹는 상태면 앱을 열기 전에 초대 전용 세션으로 다시 들어간다. 앱은 어디서든 열리므로 그대로 이어 한다.
+        if (!mctSession && EarnInputAllowed() && EarnGlitchRejoinDue())
+            EarnGlitchRejoin()
         ; 앱 작업은 메뉴 없는 HUD 에서 전화를 연다. 남은 상호작용 메뉴는 먼저 닫는다(MCT 묶음은 묶음 시작에서 닫는다).
         if (EarnInputAllowed() && (mctSession || EarnCloseLeftoverMenu()))
             result.ok := mctSession ? task.fn.Call(false) : task.id = "safe" && gEarnMode = "apps" ? task.fn.Call(false) : task.fn.Call()
@@ -575,8 +578,22 @@ EarnRunMCTBatch(tasks) {
                 outcome.results.Push({task: task, startTick: A_TickCount, ok: false, retryIn: gEarnRetryIn, reason: gEarnFail})
             return outcome
         }
+        ; 휴대폰·MCT 가 게임 문제로 둘 다 안 먹으면 초대 전용 세션으로 다시 들어간다. 다시 들어가면 스폰 부동산이라 MCT 곁이 아니므로
+        ; 이 묶음은 열지 않고 MCT 수익을 유휴 앱 모드로 내린다. 사용자가 MCT 곁에 세우고 F9 두 번이면 돌아온다.
+        if (EarnGlitchRejoinDue()) {
+            rejoined := EarnGlitchRejoin()
+            reason := rejoined ? "재접속 뒤 MCT 곁이 아님: MCT 곁에서 F9 두 번으로 MCT 수익 다시 켜기" : gEarnFail
+            for task in tasks
+                outcome.results.Push({task: task, startTick: A_TickCount, ok: false, retryIn: 3 * 60000, reason: reason})
+            return outcome
+        }
         ; Begin은 진입 실패·예외를 자체 정리한다. 성공한 세션만 여기서 닫는다.
         opened := EarnTaskMCTBegin()
+        ; 본문에 못 들어간 묶음은 MCT 무반응으로 센다(사용자 입력·포커스 이탈로 끊긴 것은 세지 않는다).
+        if (opened)
+            EarnGlitchNote("mct", false)
+        else if (EarnInputAllowed())
+            EarnGlitchNote("mct", true)
         if (!opened && IsSet(gEarnMCTCleanupOK))
             outcome.cleanupOK := gEarnMCTCleanupOK
         if (opened) {
@@ -607,6 +624,53 @@ EarnRunMCTBatch(tasks) {
         gEarnRetryIn := 0
     }
     return outcome
+}
+
+; 켜져 있고 지금 모드에서 돌 MCT 작업이 하나라도 있으면 true. 없으면 MCT 무반응은 셀 수 없다.
+EarnMCTTasksActive() {
+    global gEarnTasks, gEarnHeld
+    for t in gEarnTasks
+        if (t.on && EarnIsMCTTask(t.id) && EarnTaskAllowed(t.id) && !gEarnHeld.Has(t.id))
+            return true
+    return false
+}
+
+; 휴대폰이 EarnGlitchRejoinFails 회 연속 안 열렸고, MCT 작업이 도는 중이면 MCT 도 같은 횟수만큼 못 열었을 때 true.
+; MCT 작업이 없으면(유휴 앱 모드·MCT 작업 꺼짐) 휴대폰만 본다. 0 이면 끔.
+EarnGlitchRejoinDue() {
+    global gEarnGlitch, config
+    n := config["Settings"].Get("EarnGlitchRejoinFails", 3)
+    if (n <= 0 || gEarnGlitch["phone"] < n)
+        return false
+    return !EarnMCTTasksActive() || gEarnGlitch["mct"] >= n
+}
+
+; 휴대폰·MCT 가 게임 문제로 안 먹을 때(1010 07:30~08:18: MCT 「앞에 서 있거나…」 16회, 전화 「홈 화면 미확인」 10회가 나란히 쌓였다)
+; 초대 전용 세션으로 다시 들어간다. 재접속하면 입력이 다시 먹는다(사용자 관찰, 1023).
+; 스폰 위치(사용자 설정, 예: 저택)에서 시작하므로 MCT 곁이 아니다. 저택 AI 패널 빠른 이동으로 테러바이트에 가 MCT 를 찾는 경로는
+; 새 화면 템플릿(패널 안내·빠른 이동 목록·테러바이트 도착)이 모두 실측 캡처가 필요해 넣지 않았다. 대신 MCT 수익을 유휴 앱 모드로
+; 내리고 바인우드 앱 작업만 계속한다(1023 사용자 지시). 사용자가 MCT 곁에 세우고 F9 두 번이면 전체 수익으로 돌아온다.
+; 재접속을 확인하지 못했으면(메뉴 화면 미확인) 자리는 그대로이므로 모드를 바꾸지 않는다. 횟수만 비워 다음 횟수에 다시 시도한다.
+EarnGlitchRejoin() {
+    global gEarnGlitch, gEarnMCTSeenTick, gEarnMode, gEarnModeRequest, gEarnIdleEnabled, gEarnFail, config
+    EarnLog("재접속: 휴대폰 " gEarnGlitch["phone"] "회·MCT " gEarnGlitch["mct"] "회 연속 무반응 → 초대 전용 세션으로 다시 들어감")
+    ShowTooltip("💰 휴대폰·MCT 무반응: 초대 전용 세션으로 재접속", 4000)
+    EarnGlitchNote("phone", false), EarnGlitchNote("mct", false)
+    if (!EarnRejoinSession()) {
+        EarnLog("재접속 미확인: " gEarnFail " → 자리를 그대로 보고 다음 무반응 " config["Settings"].Get("EarnGlitchRejoinFails", 3) "회에 다시")
+        return false
+    }
+    ; 재접속 뒤 캐릭터는 스폰 부동산에 있다. MCT 곁 기준 시각을 지워 제자리 회전·안내 없는 Space 를 보내지 않는다.
+    gEarnMCTSeenTick := 0
+    if (gEarnMode = "full") {
+        gEarnIdleEnabled := true
+        gEarnModeRequest := "apps"
+        SetTimer(EarnModeTick, 1000)
+        EarnLog("재접속 완료: MCT 곁이 아니므로 바인우드 작업만 계속. MCT 수익은 MCT 곁에서 F9 두 번으로 다시 켜기")
+        ShowTooltip("💰 재접속 완료: 바인우드 작업만 계속. MCT 수익은 MCT 곁에서 F9 두 번", 8000)
+    } else
+        EarnLog("재접속 완료: 바인우드 작업 계속")
+    return true
 }
 
 ; 정상 정리 도중 F9가 들어오면 첫 호출은 중단 신호를 보고 false로 돌아올 수 있다. 정리 입력은 모두 현재 화면을
