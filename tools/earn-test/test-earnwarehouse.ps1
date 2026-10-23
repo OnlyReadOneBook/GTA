@@ -426,6 +426,14 @@ EarnUnexpectedLegacyRate() {
     throw Error("warehouse must not consume or update legacy unstaffed rate estimates")
 }
 RunObservationTests() {
+    summaryGoods := [{id:"south_american",count:100,capacity:100,unlocked:1,technician:3},
+        {id:"cash",count:20,capacity:60,unlocked:1,technician:0},
+        {id:"sporting",count:0,capacity:80,unlocked:0,technician:0}]
+    Check(EarnWarehouseGoodsSummary(summaryGoods) = "south_american 100/100 만재 | cash 20/60 | sporting 0/80",
+        "stock summary lists count/capacity and marks full goods")
+    Check(EarnWarehouseGoodsSummary(summaryGoods, true)
+        = "south_american 100/100 만재 직원3 | cash 20/60 비어있음 | sporting 0/80 잠김",
+        "staff summary adds technician, open and locked state")
     goods := [{id:"cargo",count:1,capacity:50,unlocked:1,technician:1}]
     EarnWarehouseNeedStaff("reset")
     Check(EarnWarehouseNeedStaff(goods), "first stock snapshot reads staff")
@@ -537,7 +545,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=168 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=170 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

@@ -84,6 +84,7 @@ EarnWarehouseObserve(&stockOnly := false) {
     }
     stockKey := EarnWarehouseStockKey(goods)
     EarnProductionObserve("nightclub", stockKey, stockKey != "")
+    EarnLog("창고 재고: " EarnWarehouseGoodsSummary(goods))
     if (!EarnWarehouseNeedStaff(goods)) {
         stockOnly := true
         return goods
@@ -117,7 +118,23 @@ EarnWarehouseObserve(&stockOnly := false) {
     }
     EarnWarehouseKnownFull(goods)
     EarnWarehouseNeedStaff(goods, true)
+    ; 재배정 판단의 근거가 로그에 남게 7품목의 재고와 담당을 적는다(1023: 만재 품목에 남은 직원이 자리 부족 탓인지 점검 간격 탓인지 수치로 못 가렸다).
+    EarnLog("창고 직원: " EarnWarehouseGoodsSummary(goods, true))
     return goods
+}
+
+; "south_american 100/100 만재 직원3 | cash 20/60 직원1 | sporting 0/80 잠김" 꼴. staff=false 면 판매 탭 재고만 적는다.
+EarnWarehouseGoodsSummary(goods, staff := false) {
+    text := ""
+    for row in goods {
+        part := row.id " " row.count "/" row.capacity
+        if (row.count >= row.capacity)
+            part .= " 만재"
+        if (staff)
+            part .= row.technician ? " 직원" row.technician : row.unlocked ? " 비어있음" : " 잠김"
+        text .= (text = "" ? "" : " | ") part
+    }
+    return text
 }
 
 ; 만재 직원의 실제 담당을 읽은 긍정 근거만 보존한다. 그 직원을 옮긴 뒤에도 판매 후 빈 주기의 참조모형이 흔들리지 않는다.
