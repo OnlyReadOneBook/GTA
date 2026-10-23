@@ -537,7 +537,8 @@ EarnRunScheduledTask(task, mctSession := false) {
     gEarnFail := ""
     try {
         EarnLog("시작: " task.label)
-        if (EarnInputAllowed())
+        ; 앱 작업은 메뉴 없는 HUD 에서 전화를 연다. 남은 상호작용 메뉴는 먼저 닫는다(MCT 묶음은 묶음 시작에서 닫는다).
+        if (EarnInputAllowed() && (mctSession || EarnCloseLeftoverMenu()))
             result.ok := mctSession ? task.fn.Call(false) : task.id = "safe" && gEarnMode = "apps" ? task.fn.Call(false) : task.fn.Call()
     } catch as e {
         EarnFail(task.label " 오류: " e.Message " (" e.File ":" e.Line ")")
@@ -568,6 +569,12 @@ EarnRunMCTBatch(tasks) {
     gEarnFail := ""
     gEarnRetryIn := 0
     try {
+        ; 남은 상호작용 메뉴가 MCT 접근 안내를 가리면 위치 확인이 끝없이 실패한다(1023 12:33~13:10). 위치를 보기 전에 닫는다.
+        if (!EarnCloseLeftoverMenu()) {
+            for task in tasks
+                outcome.results.Push({task: task, startTick: A_TickCount, ok: false, retryIn: gEarnRetryIn, reason: gEarnFail})
+            return outcome
+        }
         ; Begin은 진입 실패·예외를 자체 정리한다. 성공한 세션만 여기서 닫는다.
         opened := EarnTaskMCTBegin()
         if (!opened && IsSet(gEarnMCTCleanupOK))
