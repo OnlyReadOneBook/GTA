@@ -487,24 +487,47 @@ ExitApp(0)
     Invoke-EarnOfflineCheck 'DJRebook' 'EarnDJNeedsRebook' $djDriver 10
     $mctDriver = @'
 global config := Map("Settings", Map("EarnMCTOnly",1)), scene := "", failAt := "", order := "", softRetry := 0, spotClockMs := 0, sweepCalls := 0
-global gEarnManualStop := false
-for c in [["list","",true,"OR"],["stand","",true,"OR"],["chair","",true,"OR"],
-    ["need-ceo","",true,"OR"],["away","",false,""],["list","O",false,"OE"],
-    ["stand","O",false,"OE"],["stand","R",false,"ORE"],["flicker","",true,"OR"],["sweep","",false,""]] {
-    scene := c[1], failAt := c[2], order := "", softRetry := 0, spotClockMs := 0, sweepCalls := 0
+global gEarnManualStop := false, turnCalls := 0, backPresses := 0
+; app: 앞 작업이 남긴 Vinewood 앱이 안내를 가린 경우(1023 14:09·14:20 녹화). Backspace 한 번에 닫히고 안내가 돌아오면 회전 없이 연다.
+; app-stuck: 네 번 눌러도 앱이 남으면 회전하지 않고 30초 뒤 다시 본다.
+for c in [["list","",true,"OR",0,0],["stand","",true,"OR",0,0],["chair","",true,"OR",0,0],
+    ["need-ceo","",true,"OR",0,0],["away","",false,"",1,0],["list","O",false,"OE",0,0],
+    ["stand","O",false,"OE",0,0],["stand","R",false,"ORE",0,0],["flicker","",true,"OR",0,0],["sweep","",false,"",1,0],
+    ["app","",true,"OR",0,1],["app-stuck","",false,"",0,4]] {
+    scene := c[1], failAt := c[2], order := "", softRetry := 0, spotClockMs := 0, sweepCalls := 0, turnCalls := 0, backPresses := 0
     if (EarnTaskMCTBegin() != c[3] || order != c[4])
         throw Error("MCT begin guard: " c[1] "/" c[2] " order=" order)
-    if ((c[1] = "away" || c[1] = "sweep") && softRetry != 0.5)
-        throw Error("MCT begin away must retry later instead of stopping")
+    if ((c[1] = "away" || c[1] = "sweep" || c[1] = "app-stuck") && softRetry != 0.5)
+        throw Error("MCT begin away must retry later instead of stopping: " c[1])
     if (sweepCalls != 0)
         throw Error("MCT begin must wait without camera input when no prompt is seen: " c[1] " calls=" sweepCalls)
+    if (turnCalls != c[5] || backPresses != c[6])
+        throw Error("MCT begin must close a leftover app before turning: " c[1] " turns=" turnCalls " backs=" backPresses)
 }
-FileAppend("PASS MCTBegin cases=10`n", "*")
+FileAppend("PASS MCTBegin cases=12`n", "*")
 ExitApp(0)
 EarnUIReady(name,*) => EarnSeen(name)
 EarnAtMCT() => scene = "list" || scene = "chair" || scene = "need-ceo"
 EarnSeen(name,*) => name = "mct_sit" && scene = "stand" || name = "mct_title" && scene = "list"
     || name = "mct_seated" && scene = "chair" || name = "mct_need_ceo" && scene = "need-ceo"
+    || name = "afk_vinewood_title" && (scene = "app" || scene = "app-stuck")
+IsGTAActive() => true
+EarnLog(*) => 0
+EarnPress(key) {
+    global scene, backPresses
+    if (key != "Backspace")
+        throw Error("MCT begin must only send Backspace to close a leftover app: " key)
+    backPresses += 1
+    if (scene = "app")
+        scene := "stand"
+    return true
+}
+EarnMCTTurnInPlace() {
+    global turnCalls
+    turnCalls += 1
+    return false
+}
+EarnMCTOpenBlind() => false
 EarnMCTClose() {
     throw Error("MCT entry must preserve an existing terminal or seated state")
 }
@@ -551,8 +574,10 @@ EarnSoftFail(reason, retryMin) {
 EarnFail(*) => false
 '@
     # 기준 시각이 없으면(F9·MCT 확인 이력 없음) 실제 함수가 입력 없이 false 를 돌려준다.
-    $mctDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`nEarnMCTOpenBlind() => false`n"
-    Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 10
+    foreach ($fn in @('EarnMCTSpotSeen','EarnMCTLeftoverAppSeen','EarnMCTCloseLeftoverApp')) {
+        $mctDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
+    }
+    Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 12
     # 1020 녹화: MCT 곁에서 시선만 돌아간 경우. 기준 시각 뒤 물리 입력이 없을 때만 걷지 않고 45도씩 돈다.
     $turnDriver = @'
 global config := Map("Settings", Map("EarnTurnUnitsPerDeg", 2)), gEarnMCTSeenTick := 0, physIdle := 0, turns := 0, promptAt := 0
@@ -931,7 +956,7 @@ EarnTaskMCTEndWithManualRetry() => EarnTaskMCTEnd()
     $mctBeginCleanupDriver += "`n" + $mctCleanupSupport + "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd')
     $mctBeginCleanupDriver += "`nEarnSoftFail(reason, *) => EarnFail(reason)`n"
     $mctBeginCleanupDriver += "`nEarnMCTSpotSweep() => false`n"
-    $mctBeginCleanupDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`nEarnMCTOpenBlind() => false`n"
+    $mctBeginCleanupDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`nEarnMCTOpenBlind() => false`nEarnMCTCloseLeftoverApp() => `"none`"`n"
     Invoke-EarnOfflineCheck 'MCTBeginCleanup' 'EarnTaskMCTBegin' $mctBeginCleanupDriver 14
     $mctRefreshDriver = @'
 global refreshOptions := Map(), refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
@@ -2295,6 +2320,43 @@ EarnFail(*) => false
         $mctOpenDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
     Invoke-EarnOfflineCheck 'MCTOpen' 'EarnMCTOpen' $mctOpenDriver 11
+    # 테러바이트 안에서는 앉을 일이 없다(1023 사용자 지시). 이 세션에서 테러바이트로 연 적이 있으면 의자 안내가 없을 때
+    # 의자 경로의 "Press E to sit down" 문구로 실패하지 않고 테러바이트 문구로 실패한다. 의자 쪽 문구는 테러바이트 이력이 없을 때만 나온다.
+    $mctOpenWordingDriver = @'
+global EARN_PROMPT_AREA := [0,0,0.3,0.1], gEarnMCTOpenKind := "", seenNames := Map(), failReason := "", presses := 0
+; 의자 안내가 보이면 테러바이트 이력이 있어도 의자 경로(E 한 번)로 간다.
+cases := [["terrorbyte-kind-no-prompt","terrorbyte",[],"테러바이트","sit down",0],
+    ["no-kind-no-prompt","",[],"sit down","테러바이트",0],
+    ["terrorbyte-kind-chair-prompt","terrorbyte",["mct_sit"],"앉았다는 안내","테러바이트",1]]
+for c in cases {
+    gEarnMCTOpenKind := c[2], seenNames := Map(), failReason := "", presses := 0
+    for name in c[3]
+        seenNames[name] := true
+    if (EarnMCTOpen() || presses != c[6])
+        throw Error("MCT open wording " c[1] ": must fail, presses=" presses)
+    if (!InStr(failReason, c[4]) || InStr(failReason, c[5]))
+        throw Error("MCT open wording " c[1] ": reason=" failReason)
+}
+FileAppend("PASS MCTOpenWording cases=3`n", "*")
+ExitApp(0)
+EarnSeen(name,*) => seenNames.Has(name)
+EarnWaitSeen(name,*) => seenNames.Has(name)
+EarnPress(*) {
+    global presses
+    presses += 1
+    return true
+}
+EarnSleep(*) => true
+Sleep(*) => 0
+EarnFail(reason) {
+    global failReason := reason
+    return false
+}
+'@
+    foreach ($fn in @('EarnChairMCTOpen','EarnTerrorbyteMCTOpen')) {
+        $mctOpenWordingDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
+    }
+    Invoke-EarnOfflineCheck 'MCTOpenWording' 'EarnMCTOpen' $mctOpenWordingDriver 3
     $mctCloseDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings",Map("EarnTurnUnitsPerDeg",29))
 global closeCase := Map(), scene := "", aborted := false, backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0, turnList := [],
