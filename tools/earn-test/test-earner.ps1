@@ -1042,6 +1042,28 @@ Check(gEarnOn && gEarnMode = "full" && gEarnModeRequest = "apps" && !gAbort, "F9
 gEarnBusy := false
 EarnModeTick()
 Check(gEarnOn && gEarnMode = "apps", "F9 off applies apps mode after the batch")
+; 1023 21:34·22:02: F9 두 번 뒤에도 묶음이 끝난 경계마다 EarnTick 이 다음 MCT 묶음을 먼저 잡아 전환이 22:19 까지 안 됐다.
+; 차례가 된 MCT 작업이 있어도 남은 요청을 먼저 적용해 그 묶음을 시작하지 않는다.
+Reset()
+gEarnIdleEnabled := true, gEarnBusy := true
+ToggleEarner()
+gEarnBusy := false
+EarnTick()
+Check(gEarnMode = "apps" && gEarnModeRequest = "" && beginCount = 0 && calls.Length = 0 && HasLog("모드 전환: 유휴 앱 자동"),
+    "pending F9 off applies before the scheduler starts the next due MCT batch")
+EarnTick()
+Check(beginCount = 0 && calls.Length = 0, "MCT batch stays off after the boundary switch until F9 again")
+Reset()
+gEarnIdleEnabled := true, gEarnBusy := true
+ToggleEarner()
+gEarnBusy := false
+gEarnRecovery := {task: gEarnTasks[1], tasks: gEarnTasks, mct: true, outcome: {results: [], cleanupOK: false}, attempts: 1, nextTick: fakeTick}
+endOK := true, mctOpen := true
+EarnTick()
+Check(!IsObject(gEarnRecovery) && gEarnModeRequest = "apps" && gEarnMode = "full",
+    "pending F9 off waits while recovery runs and applies on the next free tick")
+EarnTick()
+Check(gEarnMode = "apps" && beginCount = 0, "recovered scheduler applies the pending off before any new batch")
 Reset()
 gEarnIdleEnabled := true, gEarnBusy := true
 ToggleEarner()
@@ -1627,7 +1649,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 250 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 254 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

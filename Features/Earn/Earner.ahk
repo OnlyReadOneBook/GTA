@@ -307,6 +307,11 @@ EarnTick() {
         EarnAFKTick()
         return
     }
+    ; F9 두 번의 모드 전환 요청은 묶음이 끝난 경계에서 EarnModeTick 이 적용한다. 그런데 이 틱이 같은 경계에서 차례가 된
+    ; 다음 작업을 먼저 잡으면 다시 busy 가 되어 전환이 영영 밀린다(1023 21:34·22:02 F9 뒤 22:19 까지 MCT 묶음이 계속 돌았다).
+    ; 작업을 고르기 전에 남은 요청을 먼저 적용한다. 복구 중이면 EarnModeTick 이 스스로 기다린다.
+    if (!recovering && IsSet(gEarnModeRequest) && gEarnModeRequest != "")
+        EarnModeTick()
     task := recovering ? gEarnRecovery.task : ""
     if (!recovering) {
         ; 짧은 재관측 주기의 앞 작업이 이미 만료돼도 더 오래 기다린 뒤쪽 작업을 계속 굶기지 않는다.
