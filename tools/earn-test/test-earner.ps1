@@ -773,6 +773,28 @@ Check(!IsObject(gEarnRecovery) && gEarnDone["bunker"] = 1 && gEarnDue["bunker"] 
     && !gEarnNextDue.Has("bunker"),
     "recovery after a user abort finalizes the bunker on its own short check, not the full interval")
 Reset()
+EarnTick()
+Check(leftoverMenuCalls = 1 && leftoverMenuBeginCount = 0 && beginCount = 1,
+    "MCT batch closes a leftover interaction menu before looking for the MCT")
+Reset()
+leftoverMenuStuck := true
+EarnTick()
+Check(gEarnOn && beginCount = 0 && calls.Length = 0 && !IsObject(gEarnRecovery) && gEarnFailures.Has("bunker")
+    && gEarnDue["bunker"] > A_TickCount && HasLog("남은 상호작용 메뉴를 닫지 못함"),
+    "an interaction menu that will not close fails the batch without MCT input and keeps earn on: begin=" beginCount
+    " calls=" calls.Length " recovery=" IsObject(gEarnRecovery) " failed=" gEarnFailures.Has("bunker")
+    " dueIn=" (gEarnDue["bunker"] - A_TickCount) " logged=" HasLog("남은 상호작용 메뉴를 닫지 못함"))
+for stuck in [false, true] {
+    Reset()
+    gEarnTasks := [{id:"staff",label:"staff",on:true,every:300000,fn:RunTask.Bind("staff")}]
+    gEarnDue := Map("staff",0), gEarnDone := Map("staff",0)
+    leftoverMenuStuck := stuck
+    EarnTick()
+    Check(gEarnOn && leftoverMenuCalls = 1 && calls.Length = (stuck ? 0 : 1) && gEarnFailures.Has("staff") = stuck,
+        stuck ? "app task does not open the phone over an interaction menu that will not close"
+            : "app task closes a leftover interaction menu before opening the phone")
+}
+Reset()
 mode := "physical"
 EarnTick()
 Check(gEarnOn && !gAbort && stopped = 0 && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnRetryIn = 0
@@ -1125,6 +1147,7 @@ Reset() {
     staleFailInjected := false, blockedRestartObserved := false
     recoveryHud := true, recoveryHudAfter := true, recoveryMenuCloseOK := true, visibleModal := ""
     gEarnCleanupNoScreen := false, gEarnCleanupTimedOut := false, endTimedOut := false
+    leftoverMenuCalls := 0, leftoverMenuBeginCount := -1, leftoverMenuStuck := false
     lifecycleTrace := false, lifecycleEvents := [], finalizerProbeStages := []
     gEarnDue := Map("bunker", A_TickCount - 1, "dj", A_TickCount - 1)
     gEarnHeld := Map(), gEarnFailures := Map(), gEarnRecovery := "", appCloseOK := true, appCloseCount := 0, state := Map(), stateWritable := true
@@ -1369,6 +1392,13 @@ EarnVinewoodClose() {
     appCloseCount++
     return appCloseOK
 }
+EarnCloseLeftoverMenu() {
+    global leftoverMenuCalls, leftoverMenuBeginCount
+    if (!lockHeld || !gEarnGuardArmed)
+        throw Error("Leftover menu close requires guarded input lock")
+    leftoverMenuCalls++, leftoverMenuBeginCount := beginCount
+    return leftoverMenuStuck ? EarnSoftFail("남은 상호작용 메뉴를 닫지 못함", 0.5) : true
+}
 EarnDispatchTask() => RunTask("dispatch")
 EarnAtMCT() {
     global mode, beginStopInjected, idleMs, mctOpen
@@ -1542,7 +1572,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 238 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 242 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

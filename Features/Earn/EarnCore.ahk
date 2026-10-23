@@ -410,21 +410,37 @@ EarnMenuOpen() {
 
 ; 열려 있으면 M 으로 닫고 닫혔는지 본다. 하위 메뉴에서도 M 한 번에 전체가 닫힌다.
 EarnMenuClose() {
+    ; GTA 가 앞이 아니면 메뉴가 안 보이는 것은 닫혔다는 뜻이 아니다. M 도 다른 창으로 간다.
+    ; 닫힌 것으로 돌려주자 메뉴가 열린 채 남아 모든 작업이 막혔다(1023 12:33:51). 다음 작업 시작이 다시 보고 닫는다.
+    if (!IsGTAActive())
+        return false
     ; 다시 그려지는 동안 잠깐 접힌 메뉴를 닫힌 것으로 보지 않게 0.6초 뒤 한 번 더 본다(1004 18:11 녹화).
     if (!EarnMenuIsOpen()) {
         Sleep(600)
         if (!EarnMenuIsOpen())
-            return true
+            return IsGTAActive() ? true : false   ; 읽는 사이 포커스를 잃었으면 닫힘을 확인한 것이 아니다
     }
     if (!EarnPress("m"))
         return false
     deadline := A_TickCount + 2500
     while (A_TickCount < deadline) {
         if (!EarnMenuIsOpen())
-            return true
+            return IsGTAActive() ? true : false
         Sleep(150)
     }
     return false
+}
+
+; 중단으로 남은 상호작용 메뉴가 MCT 안내와 전화 화면을 가리면 위치 확인·HUD 확인이 끝없이 실패한다(1023 12:33~13:10).
+; 작업을 시작하기 전에 메뉴가 보이면 M 으로 닫는다. GTA 가 앞이 아니면 아무것도 하지 않고 작업 쪽 중단 판정에 맡긴다.
+EarnCloseLeftoverMenu() {
+    if (!IsGTAActive() || !EarnMenuIsOpen())
+        return true
+    EarnLog("남은 상호작용 메뉴를 M 으로 닫음")
+    if (EarnMenuClose())
+        return true
+    ; 바로 다시 하면 매 틱 M 이 들어가 메뉴가 열렸다 닫혔다 한다. MCT 위치 미확인처럼 30초 뒤 다시 본다.
+    return EarnSoftFail("남은 상호작용 메뉴를 닫지 못함", 0.5)
 }
 
 ; 상호작용 메뉴 → Preferences → Spawn Location 을 place 로 바꾼다. place 는 템플릿 이름 뒷부분(spawn_<place>).
@@ -1547,6 +1563,9 @@ EarnCEO(on) {
                 return false
         }
         if (!EarnSeen("m_securo_sel", EARN_MENU_AREA) && !EarnSeen("m_securo", EARN_MENU_AREA)) {
+            ; 안 보인다는 판정은 GTA 가 앞에 있을 때 읽은 것만 믿는다. 포커스를 잃은 뒤 읽기로 이미 해제로 봤다(1023 12:33:51).
+            if (EarnAborted())
+                return false
             if (!EarnSeen("m_boss_sel", EARN_MENU_AREA) && !EarnSeen("m_boss", EARN_MENU_AREA))
                 EarnLog("CEO 해제: 메뉴에 SecuroServ·Register as a Boss 둘 다 없음, 이미 해제로 봄")
             ok := true

@@ -45,6 +45,9 @@ function Invoke-EarnOfflineCheck {
     if ($Name -eq 'MCTBegin') {
         $functionBody = $functionBody.Replace('A_TickCount', 'SpotClock()')
     }
+    if ($Name -eq 'CEOSubmenu') {
+        $functionBody = $functionBody.Replace('A_TickCount', 'MenuClock()')
+    }
     $prefix = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -2051,7 +2054,8 @@ EarnLog(message) {
     $ceoMenuDriver = @'
 global EARN_MENU_AREA := [0,0,0.3,0.5], menuScene := "closed", menuBoss := true,
     menuCursor := 2, menuMode := "", menuOrder := "", menuAbort := false,
-    retireRequests := 0, submenuUps := 0, menuTests := 0, menuFailure := "", arrowState := -1, menuSlept := false
+    retireRequests := 0, submenuUps := 0, menuTests := 0, menuFailure := "", arrowState := -1, menuSlept := false, menuFocus := true,
+    menuClockMs := 0
 for c in [["main",true],["preferences",true],["boss",true],["securo",true],["unknown",false],["closed",false]] {
     menuScene := c[1]
     MenuCheck(EarnMenuIsOpen() = c[2], "known title " c[1])
@@ -2080,16 +2084,29 @@ for c in [["normal","closed",true,false,true,"MUUEUUUEMM",false,1,3],
     ["arrow_white","closed",true,false,true,"MUUEUUUE",false,1,3],
     ; 이미 CEO(노랑)면 메뉴를 열지 않는다. 흰색은 MCT 아이콘이 덮은 것일 수 있어 해제 전에는 믿지 않고 메뉴로 본다.
     ["arrow_already_white","closed",true,false,true,"MUUEUUUE",false,1,3],
-    ["arrow_already_yellow","closed",true,true,true,"",true,0,0]] {
+    ["arrow_already_yellow","closed",true,true,true,"",true,0,0],
+    ; 1023 12:33:51: M 으로 연 직후 다른 창이 앞으로 오면 안 보이는 줄로 이미 해제를 판정하지 않고, 닫혔다고도 하지 않는다.
+    ["focus_lost","closed",false,false,false,"M",false,0,0]] {
     arrowState := c[1] = "arrow_already_white" ? 0 : c[1] = "arrow_already_yellow" ? 1 : -1
     menuMode := c[1], menuScene := c[2], menuBoss := c[3], menuCursor := 2,
-        menuOrder := "", menuAbort := false, retireRequests := 0, submenuUps := 0, menuFailure := "", menuSlept := false
+        menuOrder := "", menuAbort := false, retireRequests := 0, submenuUps := 0, menuFailure := "", menuSlept := false, menuFocus := true
     result := EarnCEO(c[4])
     MenuCheck(result = c[5] && menuOrder = c[6] && menuBoss = c[7]
         && retireRequests = c[8] && submenuUps = c[9],
         "CEO flow " c[1] "/" c[2] " order=" menuOrder " result=" result)
-    if (!result && menuFailure = "" && menuMode != "abort_submenu" && menuMode != "reject_retire")
+    if (!result && menuFailure = "" && menuMode != "abort_submenu" && menuMode != "reject_retire" && menuMode != "focus_lost")
         throw Error("CEO failure must have a reason")
+}
+MenuCheck(menuScene = "main", "focus loss leaves the menu open for the next task start to close")
+menuFocus := false, menuOrder := ""
+MenuCheck(!EarnMenuClose() && menuOrder = "", "menu close without GTA focus neither presses M nor reports closed")
+; 작업 시작 전 남은 메뉴 닫기: 보이면 M 한 번, 하위 메뉴도 M 한 번에 닫힌다. 안 보이거나 GTA 가 뒤면 입력하지 않는다.
+for c in [["main",true,"","M",true,"closed"], ["boss",true,"","M",true,"closed"], ["closed",true,"","",true,"closed"],
+    ["unknown",true,"","",true,"unknown"], ["main",false,"","",true,"main"], ["main",true,"stuck_menu","M",false,"main"]] {
+    menuScene := c[1], menuFocus := c[2], menuMode := c[3], menuOrder := "", menuFailure := "", menuCursor := 2
+    result := EarnCloseLeftoverMenu()
+    MenuCheck(result = c[5] && menuOrder = c[4] && menuScene = c[6] && (result || InStr(menuFailure, "닫지 못함")),
+        "leftover menu " c[1] "/" c[2] "/" c[3] " order=" menuOrder " result=" result)
 }
 FileAppend("PASS CEOSubmenu cases=" menuTests "`n", "*")
 ExitApp(0)
@@ -2102,7 +2119,7 @@ MenuCheck(condition,label) {
 ; 글자 템플릿이 맞으면 안내 상자 바탕 확인도 통과한 것으로 본다.
 TemplateAt(*) => true
 TemplateSeen(folder,name,area := "",&fx := 0,&fy := 0,variation := 40) {
-    global menuScene, menuBoss, menuCursor, menuMode
+    global menuScene, menuBoss, menuCursor, menuMode, menuFocus
     if (name = "mct_need_ceo" && (!(area is Array) || area.Length != 4
         || area[1] != 0 || area[2] != 0 || area[3] != 0.3 || area[4] != 0.1))
         throw Error("CEO warning lookup must not scan the whole transition screen")
@@ -2114,6 +2131,11 @@ TemplateSeen(folder,name,area := "",&fx := 0,&fy := 0,variation := 40) {
     } else if (folder != "Earn") {
         throw Error("Ordinary menu title must retain its Earn template: " name)
     }
+    ; focus_lost: 메뉴 제목을 확인한 뒤 줄을 읽는 순간 다른 창이 앞으로 온다(1023 12:33:51).
+    if (menuMode = "focus_lost" && menuScene = "main" && (InStr(name, "m_securo") || InStr(name, "m_boss")))
+        menuFocus := false
+    if (!menuFocus)
+        return false          ; GTA 가 뒤면 화면에서 아무것도 못 찾는다
     switch name {
         case "m_title": return menuScene = "main"
         case "m_pref_title": return menuScene = "preferences"
@@ -2136,7 +2158,10 @@ EarnPress(key) {
     if (key = "m") {
         if (menuScene = "unknown")
             throw Error("No input is allowed on an unknown menu")
-        menuScene := menuScene = "closed" ? "main" : "closed", menuCursor := 2
+        if (!menuFocus)
+            throw Error("M must not be sent while GTA is not in front")
+        if (menuMode != "stuck_menu")
+            menuScene := menuScene = "closed" ? "main" : "closed", menuCursor := 2
     } else if (key = "Up" && menuScene = "main") {
         menuCursor := Max(0,menuCursor-1)
     } else if (key = "Up" && menuScene = "securo") {
@@ -2157,28 +2182,36 @@ EarnPress(key) {
     return true
 }
 EarnHudVisible() => menuScene = "closed"
+IsGTAActive() => menuFocus ? 42 : 0
+EarnAborted() => !menuFocus
 ; relayout: 메뉴를 연 직후 한 번 쉬기 전까지는 보스·SecuroServ 줄이 그려지지 않는다.
 Drawn() => menuMode != "relayout" || menuSlept
 ; arrow_white 는 해제 전 노랑, Retire 를 누른 뒤 흰색이다.
 EarnArrowCEOColor() => menuMode = "arrow_white" || menuMode = "relayout" ? (retireRequests ? 0 : 1) : arrowState
 EarnWaitSeen(name,*) => EarnSeen(name)
-EarnSleep(*) {
-    global menuSlept
-    menuSlept := true
+EarnSleep(ms := 0) {
+    global menuSlept, menuClockMs
+    menuSlept := true, menuClockMs += ms
     return !menuAbort
 }
-Sleep(*) => true
+; 대기는 가짜 시계로만 흐른다. 실제 시간으로 돌면 해제 확인 4초·메뉴 닫힘 2.5초 대기가 검사마다 쌓여 시간 초과가 났다.
+Sleep(ms := 0) {
+    global menuClockMs
+    menuClockMs += ms
+}
+MenuClock() => menuClockMs
 EarnLog(*) => true
 EarnFail(reason) {
     global menuFailure
     menuFailure := reason
     return false
 }
+EarnSoftFail(reason, *) => EarnFail(reason)
 '@
-    foreach ($fn in @('EarnSeen','EarnMenuIsOpen','EarnSelectRow','EarnMenuOpen','EarnMenuClose','EarnCEOIs')) {
-        $ceoMenuDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
+    foreach ($fn in @('EarnSeen','EarnMenuIsOpen','EarnSelectRow','EarnMenuOpen','EarnMenuClose','EarnCEOIs','EarnCloseLeftoverMenu')) {
+        $ceoMenuDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn).Replace('A_TickCount', 'MenuClock()')
     }
-    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 24
+    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 33
     $mctOpenDriver = @'
 global EARN_PROMPT_AREA := [0,0,0.3,0.1], openOptions := Map(), openScene := "", openOrder := "",
     openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
