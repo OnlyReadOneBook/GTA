@@ -499,6 +499,34 @@ EarnMCTSpotSeen() {
     return EarnAtMCT() || EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")
 }
 
+; 화면에 남은 Vinewood 앱(왼쪽 위 제목)이나 휴대폰(오른쪽 아래)이 보이면 Backspace 로 닫는다.
+; 돌려주는 값: "none"(보인 것 없음) · "closed"(닫았고 안내가 돌아올 시간을 줌) · "stuck"(네 번 눌러도 남음).
+; GTA 가 앞이 아니면 아무것도 보내지 않는다. 회전·여는 키를 보내기 전에만 부른다.
+EarnMCTLeftoverAppSeen() {
+    if (EarnSeen("afk_vinewood_title", [0,0,0.27,0.2],,, 15))
+        return true
+    for name in ["afk_phone_frame", "ph_joblist_sel", "ph_vinewood_sel"]
+        if (EarnSeen(name, [0.83,0.58,0.98,0.73]))
+            return true
+    return false
+}
+
+EarnMCTCloseLeftoverApp() {
+    if (!IsGTAActive() || !EarnMCTLeftoverAppSeen())
+        return "none"
+    EarnLog("MCT: 남은 앱·휴대폰이 접근 안내를 가려 Backspace 로 닫음")
+    Loop 4 {
+        if (!EarnPress("Backspace") || !EarnSleep(1000))
+            return "stuck"
+        if (!EarnMCTLeftoverAppSeen()) {
+            ; 앱이 닫혀도 접근 안내는 약 1초 뒤 돌아온다(EarnVinewoodClose 와 같은 관찰).
+            EarnSleep(1500)
+            return "closed"
+        }
+    }
+    return "stuck"
+}
+
 ; 1020 01:13~06:40 녹화: 테러바이트 MCT 곁에 선 채 시선만 MCT 반대쪽으로 돌아가 접근 안내가 안 떠서 95회 연속 실패했다.
 ; F9 전체 수익은 MCT 곁에서만 켜므로(1020 사용자) 그 뒤나 MCT를 확인한 뒤면 사람이 손댔어도 돈다.
 ; 걷지 않고 카메라 모드도 바꾸지 않는다.
@@ -559,6 +587,13 @@ EarnTaskMCTBegin() {
             if (EarnAborted())
                 return false
             if (A_TickCount >= spotDeadline) {
+                ; 앞 작업이 남긴 Vinewood 앱·휴대폰이 안내를 가리면 자리와 무관하게 제자리 회전이 매번 헛돈다(1023 14:09·14:20 녹화).
+                ; 먼저 닫고 안내를 다시 본다. 닫지 못했으면 돌지 않고 30초 뒤 다시 본다.
+                leftover := EarnMCTCloseLeftoverApp()
+                if (leftover = "closed" && EarnMCTSpotSeen())
+                    break
+                if (leftover = "stuck")
+                    return EarnSoftFail("MCT: 남은 앱·휴대폰을 닫지 못함", 0.5)
                 if (!EarnMCTTurnInPlace() && !EarnMCTOpenBlind())
                     return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 0.5)
                 break

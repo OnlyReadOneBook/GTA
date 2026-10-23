@@ -1184,9 +1184,15 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
 ; 앞에 서면 "Press E to sit down" → E 로 앉으면 "Press Enter to access the Master Control Terminal" → Enter 로 화면이 열린다.
 ; 화면 안은 마우스 커서로 고른다: 커서를 버튼 위에 두고 Enter(0926 실측: 클릭은 안 먹고 Enter 가 먹는다). 뒤로는 Backspace, 일어서기는 마우스 오른쪽.
 EarnMCTOpen() {
+    global EARN_PROMPT_AREA, gEarnMCTOpenKind
     if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
         return DiscordHUDMCTSet(true)
     if (EarnSeen("mct_terrorbyte"))
+        return EarnTerrorbyteMCTOpen()
+    ; 테러바이트 안에서는 앉을 일이 없다. 이 세션에서 테러바이트로 연 적이 있고 의자 안내도 안 보이면 의자 경로로 가지 않는다.
+    ; 의자 경로의 실패 문구("Press E to sit down 안내 없음")가 테러바이트 상황에 찍히면 원인을 오독한다(1023 사용자 지시, test-earntasks 가 지킨다).
+    if (IsSet(gEarnMCTOpenKind) && gEarnMCTOpenKind = "terrorbyte"
+        && !EarnSeen("mct_sit", EARN_PROMPT_AREA) && !EarnSeen("mct_seated", EARN_PROMPT_AREA))
         return EarnTerrorbyteMCTOpen()
     return EarnChairMCTOpen()
 }
@@ -1194,7 +1200,9 @@ EarnMCTOpen() {
 EarnTerrorbyteMCTOpen() {
     global gEarnMCTOpenKind
     gEarnMCTOpenKind := "terrorbyte"
-    if (!EarnSeen("mct_terrorbyte") || !DiscordHUDMCTSet(true) || !EarnPress("Space"))
+    if (!EarnSeen("mct_terrorbyte"))
+        return EarnFail("MCT: 테러바이트 접근 안내 미확인 (Space 안내 없음)")
+    if (!DiscordHUDMCTSet(true) || !EarnPress("Space"))
         return false
     if (!EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 8000)) {
         if (!EarnSeen("mct_terrorbyte") || !EarnPress("Space")
