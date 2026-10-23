@@ -39,6 +39,9 @@ function Invoke-EarnOfflineCheck {
     if ($Name -eq 'TurnGuard') {
         $functionBody += "`n" + (Get-EarnFunctionBody $sourceText 'EarnTurnLoop')
     }
+    if ($Name -eq 'MCTTurnInPlace') {
+        $functionBody += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTRestoreCamera')
+    }
     if ($Name -eq 'MCTEndDeadline') {
         $functionBody = $functionBody.Replace('A_TickCount', 'CleanupClock()')
     }
@@ -580,14 +583,16 @@ EarnFail(*) => false
     Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 12
     # 1020 녹화: MCT 곁에서 시선만 돌아간 경우. 기준 시각 뒤 물리 입력이 없을 때만 걷지 않고 45도씩 돈다.
     $turnDriver = @'
-global config := Map("Settings", Map("EarnTurnUnitsPerDeg", 2)), gEarnMCTSeenTick := 0, physIdle := 0, turns := 0, promptAt := 0
-for c in [[0, 99999, 3, 0], [1, 10, 3, 3], [1, 99999, 3, 3], [1, 99999, 0, 32]] {
-    gEarnMCTSeenTick := c[1] ? A_TickCount - 1000 : 0, physIdle := c[2], promptAt := c[3], turns := 0
+global config := Map("Settings", Map("EarnTurnUnitsPerDeg", 2)), gEarnMCTSeenTick := 0, physIdle := 0, turns := 0, promptAt := 0, camPresses := 0
+; [기준 시각, 물리 입력, 안내가 뜨는 회전 수, 기대 회전 수, 기대 V 횟수]
+; V 는 한 바퀴(4 모드)를 채워 원래 카메라 모드로 돌아와야 한다(1인칭 유지, 1023). 모드 1에서 찾으면 0번, 못 찾으면 3+1=4번, 모드 2(9회전)에서 찾으면 1+3=4번.
+for c in [[0, 99999, 3, 0, 0], [1, 10, 3, 3, 0], [1, 99999, 3, 3, 0], [1, 99999, 0, 32, 4], [1, 99999, 9, 9, 4], [1, 99999, 25, 25, 4]] {
+    gEarnMCTSeenTick := c[1] ? A_TickCount - 1000 : 0, physIdle := c[2], promptAt := c[3], turns := 0, camPresses := 0
     found := EarnMCTTurnInPlace()
-    if (found != (promptAt && c[4] = promptAt) || turns != c[4])
-        throw Error("MCT turn-in-place: tick=" c[1] " idle=" physIdle " found=" found " turns=" turns)
+    if (found != (promptAt && c[4] = promptAt) || turns != c[4] || camPresses != c[5])
+        throw Error("MCT turn-in-place: tick=" c[1] " idle=" physIdle " found=" found " turns=" turns " v=" camPresses)
 }
-FileAppend("PASS MCTTurnInPlace cases=4`n", "*")
+FileAppend("PASS MCTTurnInPlace cases=6`n", "*")
 ExitApp(0)
 AFKPhysicalIdleMs() => physIdle
 EarnTurn(units, *) {
@@ -599,11 +604,17 @@ EarnTurn(units, *) {
 }
 EarnSeen(*) => promptAt && turns >= promptAt
 EarnWaitSeen(*) => false
-EarnPress(*) => true
+EarnPress(key) {
+    global camPresses
+    if (key != "v")
+        throw Error("turn-in-place must only press V: " key)
+    camPresses += 1
+    return true
+}
 EarnSleep(*) => true
 EarnLog(*) => 0
 '@
-    Invoke-EarnOfflineCheck 'MCTTurnInPlace' 'EarnMCTTurnInPlace' $turnDriver 4
+    Invoke-EarnOfflineCheck 'MCTTurnInPlace' 'EarnMCTTurnInPlace' $turnDriver 6
     $mctCleanupSupport = @'
 EarnAborted() => endAbort
 EarnWaitSeen(name,area,timeoutMs) {
