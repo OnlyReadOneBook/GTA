@@ -529,7 +529,7 @@ EarnMCTCloseLeftoverApp() {
 
 ; 1020 01:13~06:40 녹화: 테러바이트 MCT 곁에 선 채 시선만 MCT 반대쪽으로 돌아가 접근 안내가 안 떠서 95회 연속 실패했다.
 ; F9 전체 수익은 MCT 곁에서만 켜므로(1020 사용자) 그 뒤나 MCT를 확인한 뒤면 사람이 손댔어도 돈다.
-; 걷지 않고 카메라 모드도 바꾸지 않는다.
+; 걷지 않는다. 카메라 모드는 탐색 중에만 바꾸고 끝나면 원래 모드로 되돌린다.
 EarnMCTTurnInPlace() {
     global gEarnMCTSeenTick, config
     if (!IsSet(gEarnMCTSeenTick) || !gEarnMCTSeenTick)
@@ -537,10 +537,15 @@ EarnMCTTurnInPlace() {
     step := Round(45 * config["Settings"]["EarnTurnUnitsPerDeg"])
     ; 3인칭에서는 마우스로 카메라만 돌고 몸은 안 돈다(1020 녹화). 한 바퀴에 못 찾으면 V 로 카메라 모드를 바꿔 다시 돈다.
     ; 도보 카메라는 네 모드라 최대 네 번 바꾸면 1인칭을 한 번은 지난다.
+    ; 사용자는 1인칭으로 두고 쓰므로(1023), 찾았든 못 찾았든 남은 횟수만큼 V 를 더 눌러 한 바퀴를 채워 원래 모드로 돌아간다.
+    vPresses := 0
     Loop 4 {
         mode := A_Index
-        if (mode > 1 && (!EarnPress("v") || !EarnSleep(800)))
-            return false
+        if (mode > 1) {
+            if (!EarnPress("v") || !EarnSleep(800))
+                return false
+            vPresses += 1
+        }
         Loop 8 {
             if (!EarnTurn(step))
                 return false
@@ -549,12 +554,25 @@ EarnMCTTurnInPlace() {
                 return false
             if (EarnSeen("mct_terrorbyte")) {
                 EarnLog("MCT: 제자리 회전으로 접근 안내를 찾음 (카메라 모드 " mode "번째, " A_Index * 45 "도)")
-                return true
+                return EarnMCTRestoreCamera(vPresses)
             }
         }
     }
     EarnLog("MCT: 제자리 한 바퀴를 돌아도 접근 안내 없음")
+    EarnMCTRestoreCamera(vPresses)
     return false
+}
+
+; 도보 카메라 네 모드 중 vPresses 번 넘어간 상태에서 나머지를 눌러 원래 모드로 돌아간다. 접근 안내는 거리로 뜨므로 V 를 눌러도 유지된다.
+EarnMCTRestoreCamera(vPresses) {
+    if (!vPresses)
+        return true
+    Loop Mod(4 - vPresses, 4) {
+        if (!EarnPress("v") || !EarnSleep(800))
+            return false
+    }
+    EarnLog("MCT: 카메라 모드를 원래대로 되돌림 (V " Mod(4 - vPresses, 4) "번)")
+    return true
 }
 
 ; 안내를 못 찾아도 F9 를 켰거나 MCT 를 확인한 이력이 있으면 여는 키를 그냥 눌러 본다(1020 사용자 지시).
