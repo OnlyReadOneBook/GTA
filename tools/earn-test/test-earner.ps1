@@ -634,12 +634,11 @@ Check(calls.Length >= 2 && calls[calls.Length] = "dj" && gEarnDone["dj"] = 1, "o
 Reset()
 mode := "ambiguous"
 EarnTick()
-Check(gEarnOn && gEarnHeld.Has("bunker") && gEarnFailures["bunker"].nextTick = 0, "ambiguous transaction holds only its task")
+Check(gEarnOn && !gEarnHeld.Has("bunker") && gEarnFailures.Has("bunker") && state["pending_bunker"] != "",
+    "ambiguous transaction is recorded as a plain failure and keeps its ledger pending without holding (1024)")
 mode := "ok"
 EarnTick()
-fakeTick += 3600000
-EarnTick()
-Check(calls.Length = 3 && calls[2] = "dj" && calls[3] = "dj", "held task never repeats while other task continues")
+Check(calls.Length >= 2 && calls[2] = "bunker", "ambiguous transaction retries on the next tick instead of staying held")
 Reset()
 endOK := false
 EarnTick()
@@ -1300,7 +1299,7 @@ RunTask(id, manageSession := true) {
         return EarnFail("expected failure")
     if (taskMode = "ambiguous") {
         state["pending_" id] := "request sent"
-        return EarnFail("거래 결과 미확인, 재구매 금지")
+        return EarnFail("거래 결과 미확인, 다음 차례에 다시 읽음")
     }
     if (taskMode = "throw")
         throw Error("test exception")
