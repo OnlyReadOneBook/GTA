@@ -30,6 +30,10 @@ EarnFail(reason) {
     ; 시간 초과"가 하루 40회 반복됐는데 Steam 녹화가 꺼져 있어 증거가 없었다). 실패 순간의 GTA 클라이언트를 그대로 남긴다.
     if (InStr(reason, "MCT") = 1)
         EarnSnapFail(reason)
+    ; CEO 해제·등록 실패는 메뉴 줄 템플릿 판정이라 축소본으로는 못 가린다. 메뉴 자리를 원본 크기로 남긴다(1024 22:43: 네 템플릿이 85 에서 다 빗나갔는데
+    ; Steam 녹화는 압축으로 글자 가장자리가 100 안팎 벌어져 실제 화면 차이를 잴 수 없었다).
+    else if (InStr(reason, "CEO") = 1)
+        EarnSnapFail(reason, EARN_MENU_AREA, 1)
     return false
 }
 
@@ -1493,7 +1497,7 @@ EarnSnapMinimap(tag) {
 
 ; 진단용: MCT 실패 순간의 GTA 클라이언트 전체를 %TEMP%\claude\gta-earn-fail-<시각>-<사유>.png 로 남긴다(절반 축소).
 ; 포커스를 바꾸지 않고 동기로 찍는다. 3초 안에 겹치는 실패는 한 장만 남기고, 오래된 것부터 지워 30장만 둔다. 실패해도 흐름을 막지 않는다.
-EarnSnapFail(reason) {
+EarnSnapFail(reason, area := "", scale := 0.5) {
     static lastTick := 0
     try {
         if (A_TickCount - lastTick < 3000)
@@ -1503,11 +1507,13 @@ EarnSnapFail(reason) {
             return
         lastTick := A_TickCount
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (IsObject(area))
+            cx += Round(cw * area[1]), cy += Round(ch * area[2]), cw := Round(cw * (area[3] - area[1])), ch := Round(ch * (area[4] - area[2]))
         tag := Trim(RegExReplace(SubStr(reason, 1, 40), "[^\p{L}\p{N}]+", "-"), "-")
         name := "gta-earn-fail-" FormatTime(, "yyyyMMdd-HHmmss") "-" tag
         SplitPath(A_LineFile, , &sourceDir)
         captureScript := sourceDir "\..\..\Core\ScreenCapture.ps1"
-        RunWait('"' A_WinDir '\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "' captureScript '" -Name "' name '" -X ' cx ' -Y ' cy ' -W ' cw ' -H ' ch ' -Scale 0.5', , "Hide")
+        RunWait('"' A_WinDir '\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "' captureScript '" -Name "' name '" -X ' cx ' -Y ' cy ' -W ' cw ' -H ' ch ' -Scale ' scale, , "Hide")
         files := []
         Loop Files A_Temp "\claude\gta-earn-fail-*.png"
             files.Push(A_LoopFileFullPath)
