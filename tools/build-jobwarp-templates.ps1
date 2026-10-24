@@ -1,5 +1,5 @@
 ﻿param(
-  [string[]]$EvidenceDirs = @((Join-Path $PSScriptRoot '..\docs\evidence\2026-09-27-jobwarp'), (Join-Path $PSScriptRoot '..\docs\evidence\2026-09-28-jobwarp-outdoor')),
+  [string[]]$EvidenceDirs = @((Join-Path $PSScriptRoot '..\docs\evidence\2026-09-27-jobwarp'), (Join-Path $PSScriptRoot '..\docs\evidence\2026-09-28-jobwarp-outdoor'), (Join-Path $PSScriptRoot '..\docs\evidence\2026-10-24-ceo-menu-lower')),
   [string]$TemplateDir = (Join-Path $PSScriptRoot '..\Images\JobWarp\1920x1080'),
   [string[]]$Exclude = @(),   # 이 원본들은 템플릿을 뜰 때 빼고 시험에만 쓴다 (빼 둔 원본에서도 찾히는지 보는 교차 시험용)
   [switch]$TestOnly,
@@ -183,7 +183,8 @@ $items = @(
   @('m_ceo_sel', 'range', 214, 58, @(@('m-register-boss-ceo-sel', 37, 123), @("m-register-boss-ceo-sel$night", 37, 123), @("m-register-boss-ceo-sel$day", 37, 123))),
   @('m_start_org_sel', 'range', 208, 27, @(@('m-securoserv-start-org-sel', 38, 158), @("m-securoserv-start-org-sel$night", 38, 158), @("m-securoserv-start-org-sel$day", 38, 158))),
   # 제목 INTERACTION MENU + SecuroServ CEO(맨 위 줄). 선택·비선택 모두 제목 줄은 불투명이라 그대로 남는다
-  @('m_securo_sel', 'range', 214, 58, @(@('m-main-ceo-securo-sel', 37, 123), @('m-main-ceo-securo-sel-2', 37, 123), @("m-main-ceo-securo-sel$night", 37, 123), @("m-main-ceo-securo-sel$day", 37, 123))),
+  @('m_securo_sel', 'range', 214, 58, @(@('m-main-ceo-securo-sel', 37, 123), @('m-main-ceo-securo-sel-2', 37, 123), @("m-main-ceo-securo-sel$night", 37, 123), @("m-main-ceo-securo-sel$day", 37, 123),
+      @('m-main-ceo-securo-sel--lower1', 37, 133))),   # 1024 MCT 앞: 메뉴가 10px 아래(37,133)에 그려져 글자 윗변이 반 픽셀 어긋났다(85 에서 10칸 초과)
   @('m_securo', 'range', 214, 58, @(@('m-main-ceo-securo', 37, 123), @("m-main-ceo-securo$night", 37, 123), @("m-main-ceo-securo$day", 37, 123)), @{ coreFromRow = 29 }),   # 위 29행은 불투명 제목 줄, 그 아래 선택 안 된 줄은 흰 글자 속만
   @('m_retire_sel', 'range', 80, 22, @(@('m-ceo-menu-retire-sel', 38, 383), @("m-ceo-menu-retire-sel$night", 38, 383), @("m-ceo-menu-retire-sel$day", 38, 383))),   # SECUROSERV CEO 하위 메뉴 맨 아래(7번째) 줄
   @('m_sub_boss', 'range', 214, 21, @(@('m-register-boss-ceo-sel', 37, 123), @("m-register-boss-ceo-sel$night", 37, 123), @("m-register-boss-ceo-sel$day", 37, 123))),   # 하위 메뉴 제목 REGISTER AS A BOSS
@@ -271,6 +272,9 @@ $expect = [ordered]@{
   'phone-closed'                    = @()
 }
 # 실외(0928). 같은 상태를 밤·낮(폰은 동틀 녘·낮) 두 번 찍었다
+# 1024 22:56 MCT 앞 실측(GDI 원본 크기). m_title 은 여기서 79 라 이 표의 40 으로는 안 찾힌다. 수익 자동화는 m_title 을 85 로 찾아
+# (EarnCore.ahk EarnSeen) 메뉴는 열렸지만 여유가 6 뿐이다. m_title 은 Earn 템플릿이라 이 스크립트가 뜨지 않는다
+$expect['m-main-ceo-securo-sel--lower1'] = @('m_securo_sel')
 foreach ($t in $night, $day) {
   $expect["m-main-free-quickgps-sel$t"] = @('m_title', 'm_boss')         # 실외 해제 상태: Quick GPS 다음 2번째 줄이 Register as a Boss
   $expect["m-main-free-boss-sel$t"] = @('m_title', 'm_boss_sel')
