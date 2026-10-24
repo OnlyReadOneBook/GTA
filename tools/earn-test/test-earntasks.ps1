@@ -2111,8 +2111,8 @@ for c in [["normal","closed",true,false,true,"MUUEUUUEMM",false,1,3],
     ["missing_retire","closed",true,false,false,"MUUEUUUUUUUUUUUUM",true,0,12],
     ["reject_retire","closed",true,false,false,"MUUEUUUEM",true,1,3],
     ["verify_missing","closed",true,false,false,"MUUEUUUEMM",false,1,3],
-    ; 해제 직후 맨션 안: SecuroServ 도 Register as a Boss 도 메뉴에 없으면 이미 해제다.
-    ["verify_missing","closed",false,false,true,"MM",false,0,0],
+    ; SecuroServ 도 Register as a Boss 도 안 보이면 이미 해제로 넘기지 않고 멈춘다(1024 22:14: CEO 인데 SecuroServ 줄을 못 잡아 해제를 건너뜀).
+    ["verify_missing","closed",false,false,false,"MM",false,0,0],
     ; 열자마자 메뉴가 다시 그려져 두 줄 다 안 보이면 1.5초 뒤 다시 읽는다(1004 18:11).
     ["relayout","closed",false,false,true,"MM",false,0,0],
     ["relayout","closed",true,false,true,"MUUEUUUE",false,1,3],
