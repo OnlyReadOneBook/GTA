@@ -272,7 +272,9 @@ $expect = [ordered]@{
   'phone-closed'                    = @()
 }
 # 실외(0928). 같은 상태를 밤·낮(폰은 동틀 녘·낮) 두 번 찍었다
-$expect['m-main-ceo-securo-sel--lower1'] = @('m_title', 'm_securo_sel')   # 1024 22:56 MCT 앞 실측(GDI 원본 크기)
+# 1024 22:56 MCT 앞 실측(GDI 원본 크기). m_title 은 여기서 79 라 이 표의 40 으로는 안 찾힌다. 수익 자동화는 m_title 을 85 로 찾아
+# (EarnCore.ahk EarnSeen) 메뉴는 열렸지만 여유가 6 뿐이다. m_title 은 Earn 템플릿이라 이 스크립트가 뜨지 않는다
+$expect['m-main-ceo-securo-sel--lower1'] = @('m_securo_sel')
 foreach ($t in $night, $day) {
   $expect["m-main-free-quickgps-sel$t"] = @('m_title', 'm_boss')         # 실외 해제 상태: Quick GPS 다음 2번째 줄이 Register as a Boss
   $expect["m-main-free-boss-sel$t"] = @('m_title', 'm_boss_sel')
