@@ -233,7 +233,7 @@ EarnStaffCargoWarehouses() {
                 if (!EarnStaffWaitBusy("cargo", current, deadline, &resultState))
                     return EarnFail("직원: " current.name " 조달 결과 미확인, 재구매 중단")
                 if (!EarnTransactionCashConfirmed("staff", "expense", current.price, current.name, "OCR 7,500달러 조달과 작업 중 상태 확인"))
-                    return EarnFail("직원: 확인된 창고 조달의 원장 저장 실패. pending 보류 유지, 추가 구매 금지")
+                    return EarnFail("직원: 확인된 창고 조달의 원장 저장 실패. 다음 차례에 다시 읽음")
                 if (resultState = "full") {
                     EarnLog("직원: " displayName " 조달 뒤 만재 확인, 다음 창고 계속")
                     EarnNotifyStockFull(noticeKey, "스페셜 패키지 " displayName " 만재: 판매 필요")
@@ -333,7 +333,7 @@ EarnStaffHangar() {
         state := EarnStaffReadHangar(deadline)
         if (state = "busy" || state = "full") {
             if (!EarnTransactionCashConfirmed("staff", "expense", 25000, "격납고 조달", "OCR 25,000달러 항목과 조달 완료 상태 확인"))
-                return EarnFail("직원: 확인된 격납고 조달의 원장 저장 실패. pending 보류 유지, 재구매 금지")
+                return EarnFail("직원: 확인된 격납고 조달의 원장 저장 실패. 다음 차례에 다시 읽음")
             EarnLog("직원: 격납고 $25,000 조달 확인")
             if (state = "full")
                 EarnNotifyStockFull("hangar", "격납고 재고 만재: 판매 필요")

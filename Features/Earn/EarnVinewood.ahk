@@ -90,10 +90,10 @@ EarnVinewoodClaim(name, amount) {
         if (A_TickCount >= deadline)
             break
         if (after != "" && after != name)
-            return EarnFail("금고: " name " 수거 결과 확인 중 다른 사업장 선택. 자동 재수거 중단")
+            return EarnFail("금고: " name " 수거 결과 확인 중 다른 사업장 선택. 다음 차례에 다시 읽음")
         if (IsObject(lines) && after = name && left = 0) {
             if (!EarnTransactionCashConfirmed("safe", "income", amount, name, "OCR 금액과 수거 뒤 빈 금고 확인"))
-                return EarnFail("금고: 확인된 수입의 원장 저장 실패. pending 보류 유지, 재수거 금지")
+                return EarnFail("금고: 확인된 수입의 원장 저장 실패. 다음 차례에 다시 읽음")
             EarnLog("금고: " name " $" amount " 수거 뒤 빈 금고 확인 (요청 후 " (A_TickCount - requestedAt) "ms)")
             return true
         }
@@ -105,7 +105,7 @@ EarnVinewoodClaim(name, amount) {
         if (!EarnSleep(Min(300, Max(1, deadline - A_TickCount))))
             return false
     }
-    return EarnFail("금고: " name " 수거 후 60초 내 $0 미확인. 자동 재수거 중단")
+    return EarnFail("금고: " name " 수거 후 60초 내 $0 미확인. 다음 차례에 다시 읽음")
 }
 
 ; 다음 입금이 한도를 넘길 수 있으면 지금 수거한다. 꽉 찰 때까지 기다리면 넘치는 입금이 버려진다.

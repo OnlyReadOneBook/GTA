@@ -2,7 +2,7 @@
 ; Main 시작 시 유휴 앱 모드(재시작 전 F9 전체 수익이었으면 전체 수익). F9 두 번은 전체 수익과 유휴 앱을 전환하고 End는 모두 멈춘다.
 ; 때가 된 벙커·DJ·창고는 MCT를 한 번 열어 묶어 처리하고 한 번 닫는다. 금고·앱 파견은 그다음 별도로 한다.
 ; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
-; 개별 실패는 기록하고 정리된 화면에서 다른 작업을 계속한다. 결과 불명확 작업은 보류한다.
+; 개별 실패는 기록하고 정리된 화면에서 다른 작업을 계속한다. 결과가 불명확해도 보류하지 않고 다음 차례에 다시 읽는다.
 ; 게임 종료·재시작 시 끄고, 사용자가 다시 켜야 새 게임 상태에서 예약을 시작한다.
 global gEarnOn := false
 global gEarnMode := "full"
@@ -502,10 +502,12 @@ EarnAFKTick() {
         try %"AntiAFKTick"%()
 }
 
-; 앱 직원 파견은 이미 보낸 요원·조달 중인 창고를 게임이 비활성으로 막아 재요청해도 돈이 다시 나가지 않는다.
-; 그래서 결과 미확인으로 보류하지 않고 다음 차례에 화면을 다시 읽어 이어 간다 (1019 사용자 지시).
+; 요청 결과를 못 읽어도 어느 작업도 보류하지 않는다. 다음 차례에 화면을 다시 읽어 이어 간다 (1019·1024 사용자 지시).
+; 금고는 수입이라 다시 수거해도 잃는 게 없고, 벙커 보급·DJ 재고용·직원 파견은 이미 산 것을 게임이 비활성으로 막아 재요청해도 돈이 다시 나가지 않는다.
+; 1024 09:08 Agency 금고 수거 뒤 60초 안에 $0 을 못 읽어 pending_safe 가 남았고, 그 뒤 4시간 넘게 금고 셋 다 수거하지 않았다.
+; pending_* 상태는 원장 기록 짝(EarnTransactionBegin/CashConfirmed)으로만 쓴다.
 EarnHoldsPending(id) {
-    return id != "staff"
+    return false
 }
 
 EarnIsMCTTask(id) {
@@ -861,7 +863,7 @@ EarnFinishScheduledTask(result) {
         EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, secondsUntilDue, "Seconds"), "HH:mm:ss") ")")
         return true
     }
-    ; 정리된 화면의 일반 판독 실패는 이 작업만 미룬다. 요청 후 결과가 불명확하면 재결제·재파견하지 않는다.
+    ; 정리된 화면의 일반 판독 실패는 이 작업만 미룬다. 요청 후 결과가 불명확해도 다음 차례에 다시 읽는다.
     if (gEarnNextDue.Has(task.id))
         gEarnNextDue.Delete(task.id)
     reason := result.reason = "" ? task.label " 확인 실패" : result.reason

@@ -321,7 +321,11 @@ Check(!gEarnHeld.Has("staff") && state["pending_staff"] = "", "staff dispatch ne
 Reset()
 state["pending_bunker"] := "unconfirmed before restart"
 SetEarner(true)
-Check(gEarnHeld.Has("bunker") && state["pending_bunker"] != "", "manual enable preserves unconfirmed purchase across restarts")
+Check(!gEarnHeld.Has("bunker") && state["pending_bunker"] = "", "unconfirmed bunker purchase never stays held across restarts (1024)")
+Reset()
+state["pending_safe"] := "Agency $240000 수거 요청 결과 확인 필요"
+SetEarner(true)
+Check(!gEarnHeld.Has("safe") && state["pending_safe"] = "", "unconfirmed safe claim never stays held across restarts (1024 09:08)")
 Reset()
 gEarnOn := false
 EarnTick()
@@ -630,12 +634,11 @@ Check(calls.Length >= 2 && calls[calls.Length] = "dj" && gEarnDone["dj"] = 1, "o
 Reset()
 mode := "ambiguous"
 EarnTick()
-Check(gEarnOn && gEarnHeld.Has("bunker") && gEarnFailures["bunker"].nextTick = 0, "ambiguous transaction holds only its task")
+Check(gEarnOn && !gEarnHeld.Has("bunker") && gEarnFailures.Has("bunker") && state["pending_bunker"] != "",
+    "ambiguous transaction is recorded as a plain failure and keeps its ledger pending without holding (1024)")
 mode := "ok"
 EarnTick()
-fakeTick += 3600000
-EarnTick()
-Check(calls.Length = 3 && calls[2] = "dj" && calls[3] = "dj", "held task never repeats while other task continues")
+Check(calls.Length >= 2 && calls[2] = "bunker", "ambiguous transaction retries on the next tick instead of staying held")
 Reset()
 endOK := false
 EarnTick()
@@ -803,8 +806,8 @@ Check(gEarnOn && !gAbort && stopped = 0 && !gEarnGuardArmed && gEarnDone["bunker
 Reset()
 mode := "physical-pending"
 EarnTick()
-Check(gEarnOn && gEarnHeld.Has("bunker") && state.Has("pending_bunker") && !gAbort,
-    "user intervention preserves sent transaction and holds only its task")
+Check(gEarnOn && !gEarnHeld.Has("bunker") && !gEarnFailures.Has("bunker") && !gAbort,
+    "user intervention after a sent transaction retries the task instead of holding it")
 Reset()
 mode := "focus"
 EarnTick()
@@ -1099,10 +1102,7 @@ for appId in ["safe", "staff"] {
     fixedTask := {id:appId,label:appId,every:300000}
     state["pending_" appId] := "unconfirmed request"
     EarnFinishScheduledTask({task:fixedTask,startTick:fakeTick-1000,ok:false,reason:"pending",retryIn:90000})
-    if (appId = "staff")
-        Check(!gEarnHeld.Has(appId) && gEarnDue[appId] = fakeTick+90000, "pending staff dispatch retries instead of holding")
-    else
-        Check(gEarnHeld.Has(appId) && gEarnFailures[appId].nextTick = 0, "pending app remains held without repeat scheduling: " appId)
+    Check(!gEarnHeld.Has(appId) && gEarnDue[appId] = fakeTick+90000, "pending app task retries instead of holding: " appId)
 }
 ; 휴대폰·MCT 무반응 재접속(1010 07:30~08:18 두 실패가 나란히 쌓인 뒤로도 아무도 재접속하지 않았다).
 ; MCT 묶음이 본문에 못 들어가면 MCT 무반응으로 센다. 사용자 입력으로 끊긴 것은 세지 않는다.
@@ -1299,7 +1299,7 @@ RunTask(id, manageSession := true) {
         return EarnFail("expected failure")
     if (taskMode = "ambiguous") {
         state["pending_" id] := "request sent"
-        return EarnFail("거래 결과 미확인, 재구매 금지")
+        return EarnFail("거래 결과 미확인, 다음 차례에 다시 읽음")
     }
     if (taskMode = "throw")
         throw Error("test exception")
@@ -1649,7 +1649,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 254 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 255 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
