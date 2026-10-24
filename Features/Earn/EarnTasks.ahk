@@ -460,14 +460,14 @@ EarnBunkerBuy() {
         if (!EarnUIClick("bunker_confirm", 1065, 619)
             || !EarnWaitGone("bunker_confirm", "", 15000)
             || !EarnWaitSeen("bunker_buy", "", 5000))
-            return EarnFail("벙커: 거래 결과 미확인, 재구매 금지")
+            return EarnFail("벙커: 거래 결과 미확인, 다음 차례에 다시 읽음")
         ; 재진입해서 배송 중 안내를 확인한다. 새 결제 확인창은 확정하지 않는다.
         if (!EarnUIClick("bunker_buy", 1150, 795)
             || !EarnWaitSeen("bunker_pending", "", 5000))
-            return EarnFail("벙커: 배송 접수 미확인, 재구매 금지")
+            return EarnFail("벙커: 배송 접수 미확인, 다음 차례에 다시 읽음")
         gEarnBunkerOrdered := true
         if (!EarnTransactionCashConfirmed("bunker", "expense", price, "벙커 보급", "OCR 견적 일치와 배송 중 상태 확인"))
-            return EarnFail("벙커: 확인된 지출의 원장 저장 실패. pending 보류 유지, 재구매 금지")
+            return EarnFail("벙커: 확인된 지출의 원장 저장 실패. 다음 차례에 다시 읽음")
     }
     if (!EarnUIClick("bunker_pending", 960, 619)
         || !EarnWaitGone("bunker_pending", "", 3000))
@@ -862,7 +862,7 @@ EarnDJSwapLoop(previousMCTReading := "") {
             return EarnFail("DJ: 교체 결과 미확인")
         }
         if (!EarnTransactionCashConfirmed("dj", "expense", 10000, "Nightclub DJ 재고용", "10,000달러 재고용 항목과 교체 DJ 확인"))
-            return EarnFail("DJ: 확인된 지출의 원장 저장 실패. pending 보류 유지, 재고용 금지")
+            return EarnFail("DJ: 확인된 지출의 원장 저장 실패. 다음 차례에 다시 읽음")
         rebooks++
         gEarnDJCheckAbove := pop
         EarnDJSchedule(pop, true)

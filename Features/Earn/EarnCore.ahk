@@ -76,21 +76,21 @@ EarnTransactionCashConfirmed(id, direction, amount, source, evidence, path := ""
         reason := "원장 거래 확인 도중 pending 상태 누락, 실제 결과 확인 필요"
         EarnStateSet("pending_" id, reason)
         if (EarnStateGet("pending_" id) = reason)
-            EarnLog("원장: " id " 거래의 pending 누락. 재요청 방지를 위해 보류 상태를 저장함")
+            EarnLog("원장: " id " 거래의 pending 누락. 원장 짝을 맞추기 위해 pending 을 다시 저장함")
         else {
             if (IsSet(gEarnHeld) && IsObject(gEarnHeld))
                 gEarnHeld[id] := reason
-            EarnLog("원장: " id " 거래의 pending 누락과 보류 상태 저장 실패. 거래를 재요청하지 말고 결과 확인 필요")
+            EarnLog("원장: " id " 거래의 pending 누락과 저장 실패. 결과는 다음 차례에 다시 읽음")
         }
         return false
     }
     if (!EarnLedgerRecord(direction, amount, id, source, evidence, path)) {
-        EarnLog("원장: " id " 기록 실패. pending 상태를 유지해 거래 재요청을 막음")
+        EarnLog("원장: " id " 기록 실패. pending 은 남겨 두고 다음 차례에 다시 읽음")
         return false
     }
     EarnTransactionConfirmed(id)
     if (EarnStateGet("pending_" id) != "") {
-        EarnLog("원장: " id " 행은 기록했지만 pending 정리를 확인하지 못함. 거래 재요청 금지")
+        EarnLog("원장: " id " 행은 기록했지만 pending 정리를 확인하지 못함")
         return false
     }
     return true
