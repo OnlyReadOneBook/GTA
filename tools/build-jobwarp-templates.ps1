@@ -24,6 +24,8 @@
 #      선택 안 된 줄 바탕은 약 60% 불투명한 검정(바탕 = 0.35~0.41 x 뒤 배경)이라 뒤가 밝으면 0 에서 약 105 까지 올라간다.
 #   3) 폰 화면은 3D 로 그려져 밝기가 장면에 따라 통째로 곱해진다(저택 안 1.0, 동틀 녘 약 0.87, 흐린 낮 약 0.93).
 #
+# 1024: MCT 앞에서 메뉴가 원본보다 10px 아래 그려져 선택 줄 글자 윗변이 반 픽셀 어긋났다(m_securo_sel 차이 100, CEO 해제가 SecuroServ·Retire 줄을 못 찾음).
+#       옛 원본만으로 flat = 1 로 뜬 m_securo_sel 은 그 실측에서 16 이라, CEO 등록·해제의 선택 줄 템플릿(m_securo_sel·m_retire_sel·m_ceo_sel·m_start_org_sel)에 flat 을 켰다.
 # 뜨는 방식(한 템플릿에 양성 원본 여러 장을 같은 자리로 맞춰 겹친다)
 #   range   : 칸마다 원본들의 채널별 최솟값·최댓값을 보고, 폭(최대-최소)이 2 x $rangeHalf 이하인 칸만 남겨 그 가운데 값을 적는다.
 #             원본마다 달라지는 칸(반 픽셀 어긋난 글자 가장자리, 뒤 배경이 비치는 칸)은 FF00FF(투명)가 된다.
@@ -180,13 +182,13 @@ $items = @(
   @('m_boss_sel', 'range', 184, 27, @(
       @('m-main-free-boss-sel', 38, 233), @("m-main-free-boss-sel$night", 38, 196), @("m-main-free-boss-sel$day", 38, 196)), @{ flat = 1 }),
   # 제목 REGISTER AS A BOSS + 선택된 SecuroServ CEO. "SecuroServ CEO" 선택 줄은 보스 메인 메뉴 맨 위와 글자·자리가 같아 제목 줄까지 같이 뜬다
-  @('m_ceo_sel', 'range', 214, 58, @(@('m-register-boss-ceo-sel', 37, 123), @("m-register-boss-ceo-sel$night", 37, 123), @("m-register-boss-ceo-sel$day", 37, 123))),
-  @('m_start_org_sel', 'range', 208, 27, @(@('m-securoserv-start-org-sel', 38, 158), @("m-securoserv-start-org-sel$night", 38, 158), @("m-securoserv-start-org-sel$day", 38, 158))),
+  @('m_ceo_sel', 'range', 214, 58, @(@('m-register-boss-ceo-sel', 37, 123), @("m-register-boss-ceo-sel$night", 37, 123), @("m-register-boss-ceo-sel$day", 37, 123)), @{ flat = 1 }),
+  @('m_start_org_sel', 'range', 208, 27, @(@('m-securoserv-start-org-sel', 38, 158), @("m-securoserv-start-org-sel$night", 38, 158), @("m-securoserv-start-org-sel$day", 38, 158)), @{ flat = 1 }),
   # 제목 INTERACTION MENU + SecuroServ CEO(맨 위 줄). 선택·비선택 모두 제목 줄은 불투명이라 그대로 남는다
   @('m_securo_sel', 'range', 214, 58, @(@('m-main-ceo-securo-sel', 37, 123), @('m-main-ceo-securo-sel-2', 37, 123), @("m-main-ceo-securo-sel$night", 37, 123), @("m-main-ceo-securo-sel$day", 37, 123),
-      @('m-main-ceo-securo-sel--lower1', 37, 133))),   # 1024 MCT 앞: 메뉴가 10px 아래(37,133)에 그려져 글자 윗변이 반 픽셀 어긋났다(85 에서 10칸 초과)
+      @('m-main-ceo-securo-sel--lower1', 37, 133)), @{ flat = 1 }),   # 1024 MCT 앞: 메뉴가 10px 아래(37,133)에 그려져 글자 윗변이 반 픽셀 어긋났다(85 에서 10칸 초과)
   @('m_securo', 'range', 214, 58, @(@('m-main-ceo-securo', 37, 123), @("m-main-ceo-securo$night", 37, 123), @("m-main-ceo-securo$day", 37, 123)), @{ coreFromRow = 29 }),   # 위 29행은 불투명 제목 줄, 그 아래 선택 안 된 줄은 흰 글자 속만
-  @('m_retire_sel', 'range', 80, 22, @(@('m-ceo-menu-retire-sel', 38, 383), @("m-ceo-menu-retire-sel$night", 38, 383), @("m-ceo-menu-retire-sel$day", 38, 383))),   # SECUROSERV CEO 하위 메뉴 맨 아래(7번째) 줄
+  @('m_retire_sel', 'range', 80, 22, @(@('m-ceo-menu-retire-sel', 38, 383), @("m-ceo-menu-retire-sel$night", 38, 383), @("m-ceo-menu-retire-sel$day", 38, 383)), @{ flat = 1 }),   # SECUROSERV CEO 하위 메뉴 맨 아래(7번째) 줄
   @('m_sub_boss', 'range', 214, 21, @(@('m-register-boss-ceo-sel', 37, 123), @("m-register-boss-ceo-sel$night", 37, 123), @("m-register-boss-ceo-sel$day", 37, 123))),   # 하위 메뉴 제목 REGISTER AS A BOSS
   # 하위 메뉴 제목 SECUROSERV. SECUROSERV CEO(보스 메뉴 하위) 도 앞 글자가 같아 함께 잡는다
   @('m_sub_securo', 'range', 140, 21, @(@('m-securoserv-start-org-sel', 37, 123), @('m-ceo-menu-hire-sel', 37, 123), @("m-securoserv-start-org-sel$night", 37, 123), @("m-ceo-menu-hire-sel$day", 37, 123))),
