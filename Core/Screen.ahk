@@ -46,7 +46,9 @@ HealthHudColors(colors) {
 ; area 는 클라이언트 비율 [x1, y1, x2, y2] (0~1). 찾은 자리(화면 좌표)는 &fx, &fy.
 TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
     global gImageRoot
-    probe := folder = "Earn" && RegExMatch(name, "^(mct_seated_mansion(_bg)?|dj_resident(_right)?|warehouse_person_(full_)?foot)$")
+    ; 보스 메뉴 줄(JobWarp\m_*)도 남긴다. 1024 22:14 SecuroServ CEO 줄이 떠 있는데 못 찾아 해제를 건너뛰었을 때 비교 기록이 없었다.
+    probe := (folder = "Earn" && RegExMatch(name, "^(mct_seated_mansion(_bg)?|dj_resident(_right)?|warehouse_person_(full_)?foot)$"))
+        || (folder = "JobWarp" && RegExMatch(name, "^m_"))
     hwnd := IsGTAActive()
     if (!hwnd) {
         if (probe)

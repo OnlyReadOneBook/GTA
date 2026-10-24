@@ -1572,7 +1572,7 @@ EarnCEO(on) {
         ; m_boss 는 허용 오차가 커서 테러바이트 CEO 메뉴의 다른 줄에도 맞았다(1003 17:13 실측).
         ; SecuroServ 줄이 보이면 CEO 이므로 그것부터 본다.
         ; CEO 면 SecuroServ 줄이 늘 맨 위에 있다. 해제 직후 맨션 안에서는 Register as a Boss 줄도 메뉴에서
-        ; 빠지므로(1004 15:43 녹화: 맨 위가 Mansion Management, 11줄 중 보스 줄 없음) SecuroServ 가 없으면 해제로 본다.
+        ; 빠진다(1004 15:43 녹화: 맨 위가 Mansion Management, 11줄 중 보스 줄 없음). 그래도 둘 다 안 보이면 해제로 보지 않는다(아래).
         ; 둘 다 안 보이면 메뉴가 다시 그려지는 중일 수 있다. 열자마자 11줄이었다가 Register as a Boss 가 끼어 12줄로
         ; 다시 그려지며 잠깐 접힌다(1004 18:11 녹화). 그 순간 읽고 해제로 넘겨 메뉴가 열린 채 전화 키가 메뉴로 갔다.
         if (!EarnSeen("m_securo_sel", EARN_MENU_AREA) && !EarnSeen("m_securo", EARN_MENU_AREA)
@@ -1584,8 +1584,10 @@ EarnCEO(on) {
             ; 안 보인다는 판정은 GTA 가 앞에 있을 때 읽은 것만 믿는다. 포커스를 잃은 뒤 읽기로 이미 해제로 봤다(1023 12:33:51).
             if (EarnAborted())
                 return false
+            ; 둘 다 안 보이면 해제로 넘기지 않고 멈춘다. 1024 22:08~22:14 SecuroServ CEO 줄이 선택된 채 떠 있는데(녹화) 템플릿이 못 잡아
+            ; "이미 해제로 봄" 으로 다섯 번 넘겨 CEO 가 켜진 채 남았다.
             if (!EarnSeen("m_boss_sel", EARN_MENU_AREA) && !EarnSeen("m_boss", EARN_MENU_AREA))
-                EarnLog("CEO 해제: 메뉴에 SecuroServ·Register as a Boss 둘 다 없음, 이미 해제로 봄")
+                return EarnFail("CEO 해제: 메뉴에 SecuroServ·Register as a Boss 둘 다 안 보임")
             ok := true
             return true              ; 이미 해제
         }
