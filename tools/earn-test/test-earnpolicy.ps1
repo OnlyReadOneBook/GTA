@@ -73,7 +73,7 @@ for c in cases {
     Check(plan.buy = c[5] && plan.bars = c[6] && plan.reason = c[7], c[1])
 }
 plan := EarnBunkerOrderPlan(0.8, 0.4)
-Check(!plan.buy && plan.bars = 4, "omitted interval defaults to 112 minutes")
+Check(plan.buy && plan.bars = 1, "omitted interval defaults to one bar (28 minutes)")
 plan := EarnBunkerOrderPlan(0.21, 0.4)
 Check(!plan.buy && plan.bars = 4 && plan.waitMs = 10000, "actual remaining supply near boundary requests ten-second observation regardless of production speed")
 plan := EarnBunkerOrderPlan(0.19, 0.4)
