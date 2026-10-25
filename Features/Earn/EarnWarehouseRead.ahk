@@ -30,22 +30,30 @@ EarnWarehouseReadStock(lines) {
         for line in lines {
             if (line.x < tile.x || line.x >= tile.x+tile.w || line.y < tile.y || line.y >= tile.y+90)
                 continue
-            if (line.text == tile.name) {
+            ; 방치 중 OCR 은 이름을 자주 깨뜨린다("Sportina Goods"·"Sportin$uSterJ243 26/100", 1025 82회 연속 실패).
+            ; 이름은 첫 낱말 앞 다섯 글자(대소문자 구분)로만 보고, 수량은 줄 끝에 공백 뒤로 붙어 있어도 읽는다. 다른 품목 이름이 끼면 버린다.
+            isName := EarnWarehouseNameLike(line.text, tile.name)
+            if (isName)
                 names++
-            } else if (RegExMatch(line.text, "^(0|[1-9][0-9]{0,2})\h*/\h*(0|[1-9][0-9]{0,2})$", &quantity)) {
+            if (RegExMatch(line.text, "(?:^|\h)(0|[1-9][0-9]{0,2})\h*/\h*(0|[1-9][0-9]{0,2})$", &quantity)) {
                 quantities++
                 count := Integer(quantity[1]), capacity := Integer(quantity[2])
-            } else {
+            } else if (!isName) {
                 if (InStr(line.text, "/"))
                     return false
-                for knownTile in tiles
-                    if (line.text == knownTile.name)
-                        return false
             }
+            for knownTile in tiles
+                if (knownTile.id != tile.id && EarnWarehouseNameLike(line.text, knownTile.name))
+                    return false
         }
         if (names != 1 || quantities != 1 || capacity <= 0 || count > capacity)
             return false
         goods.Push({id: tile.id, count: count, capacity: capacity, unlocked: 0, technician: 0})
     }
     return goods
+}
+
+; OCR 줄이 품목 이름으로 보이는지. 첫 낱말 앞 다섯 글자("Sport"·"Pharm"·"Cash ")가 줄 맨 앞에 그대로 있어야 한다.
+EarnWarehouseNameLike(text, name) {
+    return SubStr(text, 1, 5) == SubStr(name, 1, 5)
 }

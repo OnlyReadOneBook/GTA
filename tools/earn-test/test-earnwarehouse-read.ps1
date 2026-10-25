@@ -64,9 +64,27 @@ RunWarehouseReadTests() {
     rows := LoadRows()
     rows.Push(StockRow("30/50"))
     Check(!EarnWarehouseReadStock(rows), "conflicting duplicate quantity is rejected")
+    ; 1025 13:11 실제 OCR(방치 중): 이름 한 글자가 틀려도 위치·수량으로 읽는다. 이전에는 82회 연속 판독 실패였다.
     rows := LoadRows()
     FindRow(rows, "Cargo and Shipments").text := "Cargo & Shipments"
-    Check(!EarnWarehouseReadStock(rows), "unobserved name spelling is rejected")
+    goods := EarnWarehouseReadStock(rows)
+    Check(goods && goods[1].count = 29, "garbled name with the same first word is read")
+    rows := LoadRows()
+    FindRow(rows, "Sporting Goods").text := "Sportina Goods"
+    goods := EarnWarehouseReadStock(rows)
+    Check(goods && goods[2].count = 51, "Sportina Goods is read")
+    rows := LoadRows()
+    RemoveText(rows, "51/100")
+    FindRow(rows, "Sporting Goods").text := "Sportin$uSterJ243 51/100"
+    goods := EarnWarehouseReadStock(rows)
+    Check(goods && goods[2].count = 51 && goods[2].capacity = 100, "quantity glued to a garbled name is read")
+    rows := LoadRows()
+    RemoveText(rows, "51/100")
+    FindRow(rows, "Sporting Goods").text := "3:4751/100"
+    Check(!EarnWarehouseReadStock(rows), "quantity glued to digits is rejected")
+    rows := LoadRows()
+    FindRow(rows, "Sporting Goods").text := "Xportin Goods"
+    Check(!EarnWarehouseReadStock(rows), "name with a different first word is rejected")
     rows := LoadRows()
     FindRow(rows, "Cargo and Shipments").text := "cargo and shipments"
     Check(!EarnWarehouseReadStock(rows), "name matching is exact")
@@ -169,7 +187,7 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouseRead cases=38 (no game input)') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouseRead cases=42 (no game input)') {
         throw "Warehouse read test failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
