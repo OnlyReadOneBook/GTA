@@ -1203,10 +1203,10 @@ EarnMCTOpen() {
         return DiscordHUDMCTSet(true)
     if (EarnSeen("mct_terrorbyte"))
         return EarnTerrorbyteMCTOpen()
-    ; 테러바이트 안에서는 앉을 일이 없다. 이 세션에서 테러바이트로 연 적이 있고 의자 안내도 안 보이면 의자 경로로 가지 않는다.
-    ; 의자 경로의 실패 문구("Press E to sit down 안내 없음")가 테러바이트 상황에 찍히면 원인을 오독한다(1023 사용자 지시, test-earntasks 가 지킨다).
-    if (IsSet(gEarnMCTOpenKind) && gEarnMCTOpenKind = "terrorbyte"
-        && !EarnSeen("mct_sit", EARN_PROMPT_AREA) && !EarnSeen("mct_seated", EARN_PROMPT_AREA))
+    ; 테러바이트 안에서는 앉을 일이 없다. 이 세션에서 테러바이트로 연 적이 있으면 의자 경로로 가지 않는다.
+    ; 테러바이트 MCT 곁 좌석에도 "Press E to sit down" 이 뜬다. 1025 13:34 녹화: 자리에서 밀린 채 그 안내를 보고 E 로 좌석에 앉았다.
+    ; 그래서 의자 안내가 보여도 E 를 누르지 않고 테러바이트 문구로 실패한다(1023·1025 사용자 지시, test-earntasks 가 지킨다).
+    if (IsSet(gEarnMCTOpenKind) && gEarnMCTOpenKind = "terrorbyte")
         return EarnTerrorbyteMCTOpen()
     return EarnChairMCTOpen()
 }
