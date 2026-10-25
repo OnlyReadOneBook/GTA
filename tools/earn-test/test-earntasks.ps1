@@ -2335,10 +2335,11 @@ EarnFail(*) => false
     # 의자 경로의 "Press E to sit down" 문구로 실패하지 않고 테러바이트 문구로 실패한다. 의자 쪽 문구는 테러바이트 이력이 없을 때만 나온다.
     $mctOpenWordingDriver = @'
 global EARN_PROMPT_AREA := [0,0,0.3,0.1], gEarnMCTOpenKind := "", seenNames := Map(), failReason := "", presses := 0
-; 의자 안내가 보이면 테러바이트 이력이 있어도 의자 경로(E 한 번)로 간다.
+; 테러바이트 이력이 있으면 곁 좌석의 의자 안내가 보여도 E 를 누르지 않는다(1025 13:34 녹화).
 cases := [["terrorbyte-kind-no-prompt","terrorbyte",[],"테러바이트","sit down",0],
     ["no-kind-no-prompt","",[],"sit down","테러바이트",0],
-    ["terrorbyte-kind-chair-prompt","terrorbyte",["mct_sit"],"앉았다는 안내","테러바이트",1]]
+    ["terrorbyte-kind-chair-prompt","terrorbyte",["mct_sit"],"테러바이트","앉았다는 안내",0],
+    ["terrorbyte-kind-seated","terrorbyte",["mct_sit","mct_seated"],"테러바이트","앉았다는 안내",0]]
 for c in cases {
     gEarnMCTOpenKind := c[2], seenNames := Map(), failReason := "", presses := 0
     for name in c[3]
@@ -2348,7 +2349,7 @@ for c in cases {
     if (!InStr(failReason, c[4]) || InStr(failReason, c[5]))
         throw Error("MCT open wording " c[1] ": reason=" failReason)
 }
-FileAppend("PASS MCTOpenWording cases=3`n", "*")
+FileAppend("PASS MCTOpenWording cases=4`n", "*")
 ExitApp(0)
 EarnSeen(name,*) => seenNames.Has(name)
 EarnWaitSeen(name,*) => seenNames.Has(name)
@@ -2367,7 +2368,7 @@ EarnFail(reason) {
     foreach ($fn in @('EarnChairMCTOpen','EarnTerrorbyteMCTOpen')) {
         $mctOpenWordingDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'MCTOpenWording' 'EarnMCTOpen' $mctOpenWordingDriver 3
+    Invoke-EarnOfflineCheck 'MCTOpenWording' 'EarnMCTOpen' $mctOpenWordingDriver 4
     $mctCloseDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings",Map("EarnTurnUnitsPerDeg",29))
 global closeCase := Map(), scene := "", aborted := false, backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0, turnList := [],
