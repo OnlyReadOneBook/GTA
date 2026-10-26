@@ -1,6 +1,6 @@
 ; === 랜선 뽑기 (렉 스위치) ===
 ; 단축키를 누르고 있는 동안 GTA 의 네트워크를 끊고, 떼면 곧바로 되돌린다. 레이스에서 내 상태가 다른 사람에게 안 가는 구간을 만든다.
-; 오래 끊으면 피어 타임아웃으로 세션에서 튕기므로 LagSwitchMaxMs 가 지나면 키를 쥐고 있어도 자동으로 되돌린다.
+; 시간 상한은 없다. 키를 쥐고 있는 동안 계속 끊는다(오래 끊으면 세션에서 튕길 수 있다).
 ; 방식(LagSwitchMode):
 ;   suspend = GTA5_Enhanced.exe 만 NtSuspendProcess 로 멈췄다 NtResumeProcess 로 푼다. 관리자 권한이 필요 없고 복구가 즉시다. 기본값.
 ;             화면·입력도 같이 멈춘다. 리소스 모니터의 '프로세스 일시 중단'과 같은 동작을 클릭 없이 한다.
@@ -26,8 +26,8 @@ ExecuteLagSwitch() {
     MacroLog("lagswitch", mode " cut")
     ShowTooltip("🔌 랜선 뽑음 (" mode ")", 600)
     try {
-        ; 키를 떼면 즉시, 아니면 최대 시간 뒤에 복구한다. 자동 반복으로 다시 들어오는 누름은 위에서 gLagActive 로 걸러진다.
-        KeyWait(key, "T" (s["LagSwitchMaxMs"] / 1000))
+        ; 키를 떼면 즉시 복구한다. 자동 반복으로 다시 들어오는 누름은 위에서 gLagActive 로 걸러진다.
+        KeyWait(key)
     }
     LagSwitchRestore("held " (A_TickCount - start) "ms")
 }
