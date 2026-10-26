@@ -16,10 +16,6 @@ ExecuteLagSwitch() {
     global config, gLagActive
     if (gLagActive || !IsGTAActive())
         return
-    if (IsSet(gEarnBusy) && gEarnBusy) {
-        ShowTooltip("랜선 뽑기: 수익 자동화가 진행 중", 1500)
-        return
-    }
     s := config["Settings"]
     mode := StrLower(Trim(s["LagSwitchMode"]))
     key := RegExReplace(A_ThisHotkey, "^[~*$]+")
