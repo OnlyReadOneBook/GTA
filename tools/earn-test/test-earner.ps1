@@ -1073,7 +1073,7 @@ ToggleEarner()
 ToggleEarner()
 gEarnBusy := false
 EarnModeTick()
-Check(gEarnOn && gEarnMode = "full" && gEarnModeRequest = "", "second F9 before the boundary cancels the pending off")
+Check(gEarnOn && gEarnMode = "apps" && gEarnModeRequest = "", "second F9 before the boundary keeps the pending off")
 Reset()
 gEarnIdleEnabled := false
 gEarnRecovery := {task:{id:"bunker",label:"bunker"},mct:true,nextTick:fakeTick+30000}
