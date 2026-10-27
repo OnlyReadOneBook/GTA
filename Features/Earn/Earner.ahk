@@ -160,9 +160,12 @@ ToggleEarner(*) {
     ; 끌 때 따로 MCT 정리·CEO 해제를 하지 않는다. CEO 해제는 MCT 작업 안에서만 한다 (1019 사용자 지시).
     if (gEarnOn && gEarnMode = "full") {
         gEarnIdleEnabled := true
-        gEarnModeRequest := gEarnModeRequest = "apps" ? "" : "apps"
+        ; 끄기 요청은 다시 눌러도 취소하지 않는다. 묶음이 안 끝나 MCT 가 계속 도는 걸 보고 또 누르면 요청이 지워져
+        ; MCT 가 영영 안 꺼졌다(1027 13:09 F9 확정 3번 → apps·취소·apps). 전체 수익으로 돌리는 건 전환이 끝난 뒤 F9 두 번이다.
+        gEarnModeRequest := "apps"
         SetTimer(EarnModeTick, 1000)
-        ShowTooltip("💰 MCT 수익 끄는 중: 진행 작업이 끝나면 바인우드 작업만 계속", 2500)
+        EarnLog("F9: MCT 수익 끄기 요청 (진행 중인 작업 하나만 끝내고 MCT 정리)")
+        ShowTooltip("💰 MCT 수익 끄는 중: 지금 작업 하나만 끝내고 MCT 를 닫은 뒤 바인우드 작업만 계속", 2500)
         EarnModeTick()
     } else if (gEarnOn) {
         gEarnModeRequest := gEarnModeRequest = "full" ? "" : "full"
@@ -571,7 +574,7 @@ EarnRunScheduledTask(task, mctSession := false) {
 }
 
 EarnRunMCTBatch(tasks) {
-    global gEarnCurrent, gEarnFail, gEarnRetryIn, gEarnMCTCleanupOK
+    global gEarnCurrent, gEarnFail, gEarnRetryIn, gEarnMCTCleanupOK, gEarnModeRequest
     outcome := {results: [], cleanupOK: true}
     opened := false
     currentTask := tasks[1]
@@ -605,6 +608,11 @@ EarnRunMCTBatch(tasks) {
             outcome.cleanupOK := gEarnMCTCleanupOK
         if (opened) {
             for task in tasks {
+                ; F9 로 MCT 수익을 끄면 묶음의 남은 작업은 하지 않고 바로 MCT 정리로 간다. 남은 작업은 예약을 그대로 두고 앱 모드에서 걸러진다.
+                if (gEarnModeRequest = "apps") {
+                    EarnLog("F9: MCT 묶음의 남은 작업 건너뛰고 정리 (" task.label " 부터)")
+                    break
+                }
                 currentTask := task
                 result := EarnRunScheduledTask(task, true)
                 outcome.results.Push(result)
