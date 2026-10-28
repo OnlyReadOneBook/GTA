@@ -1,8 +1,8 @@
 ; === 카지노 VPN (자동) ===
 ; 한국 IP 에서는 다이아몬드 카지노 도박이 막힌다. 지역 판정은 런처·게임 부팅 때 이뤄진다고 알려져 있어(Sportskeeda, 공식 확인 없음)
 ; GTA 가 어떤 경로(Steam·바탕화면·Rockstar 런처)로 켜지든 PlayGTAV/GTA5_Enhanced 가 나타나는 순간 VPN(Proton 무료 NL, WireGuard) 을 켜고,
-; 게임 화면에 체력 막대(HUD) 가 2초 간격 두 번 연속 보이면(온라인 세션 로딩이 끝남) CasinoVpnHoldSec 초 뒤에 끈다.
-; 스토리 모드에도 같은 HUD 가 있어 스토리로 먼저 들어가면 그때 꺼진다(온라인 직행 설정 전제). 시간 상한은 없다(온라인 접속이 늦어도 끊지 않는다). 게임이 먼저 꺼지면 바로 끈다.
+; 시작 화면(ONLINE·GTA+·STORY 탭 화면)이나 체력 막대(HUD) 가 2초 간격 두 번 연속 보이면 CasinoVpnHoldSec 초 뒤에 끈다.
+; 시작 화면이 먼저 뜨는 게 보통이고, 시작 화면을 건너뛰고 바로 들어간 경우만 HUD 로 끈다. 시간 상한은 없다. 게임이 먼저 꺼지면 바로 끈다.
 ; VPN 은 GTA 프로세스(GTA5_Enhanced·PlayGTAV·Rockstar 런처·SocialClubHelper)에만 건다. WireSock CLI 서비스 wiresock-client-service 가
 ; vpn\gtanl-split.conf(AllowedApps, 깃 제외)로 앱별 분할 터널을 연다. 윈도우 전체 경로를 잡는 WireGuard 서비스(gtanl)는 쓰지 않는다
 ; (1028: 전체 터널이 SSH·원격 데스크톱·Tailscale·러너까지 끊었다). 관리자 권한이 필요해 예약 작업 GTA-VPN-On/Off(가장 높은 권한) 가
@@ -54,15 +54,16 @@ CasinoVpnTick() {
         gCasinoVpnGtaSeen := A_TickCount
         CasinoVpnLog("GTA5_Enhanced 뜸 (+" Round((A_TickCount - gCasinoVpnStart) / 1000) "s)")
     }
-    ; 체력 막대는 2초 간격으로 본다. 두 번 연속 보인 시각부터 hold 를 센다(0c13557 은 판정 함수만 두고 부르지 않아 exe 뜬 지 5초 만에 껐다).
+    ; 시작 화면·체력 막대는 2초 간격으로 본다. 두 번 연속 보인 시각부터 hold 를 센다(0c13557 은 판정 함수만 두고 부르지 않아 exe 뜬 지 5초 만에 껐다).
     if (gCasinoVpnGtaSeen && gCasinoVpnHudStreak < 2 && A_TickCount - gCasinoVpnHudCheck >= 2000) {
         gCasinoVpnHudCheck := A_TickCount
-        gCasinoVpnHudStreak := CasinoVpnHudVisible() ? gCasinoVpnHudStreak + 1 : 0
+        seen := CasinoVpnLandingVisible() ? "시작 화면" : CasinoVpnHudVisible() ? "HUD" : ""
+        gCasinoVpnHudStreak := seen != "" ? gCasinoVpnHudStreak + 1 : 0
         if (gCasinoVpnHudStreak >= 2)
-            CasinoVpnLog("HUD 확인 (+" Round((A_TickCount - gCasinoVpnStart) / 1000) "s)")
+            CasinoVpnLog(seen " 확인 (+" Round((A_TickCount - gCasinoVpnStart) / 1000) "s)")
     }
     if (gCasinoVpnHudStreak >= 2 && A_TickCount - gCasinoVpnHudCheck >= gCasinoVpnHoldSec * 1000)
-        return StopCasinoVpn("HUD 확인 뒤 " gCasinoVpnHoldSec "s")
+        return StopCasinoVpn("시작 화면·HUD 확인 뒤 " gCasinoVpnHoldSec "s")
 }
 
 StopCasinoVpn(reason := "") {
@@ -92,6 +93,39 @@ CasinoVpnHudVisible() {
             green += g >= 100 && g-r >= 40 && g-b >= 40 && Abs(r-b) <= 25
         }
         return green * 4 >= 32 * 3
+    } catch {
+        return false
+    } finally {
+        if (previous)
+            DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+    }
+}
+
+; 시작 화면(게임을 켜면 처음 나오는 ONLINE·GTA+·STORY 탭 화면, 1920x1080). 1028 원격 데스크톱 캡처에서 잰 값:
+; 선택된 ONLINE 탭은 흰 상자(x 96~232, y 53~93)이고 글자 양옆 여백이 밝은 회색(240 안팎)이다. 탭 줄 위와 아래(y 25·110)는 화면 폭 전체가 검다.
+; 게임 화면·로딩 그림에는 이 조합이 없다.
+CasinoVpnLandingVisible() {
+    hwnd := WinActive("Grand Theft Auto V ahk_exe GTA5_Enhanced.exe")
+    if (!hwnd)
+        return false
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (cw != 1920 || ch != 1080)
+            return false
+        CoordMode("Pixel", "Screen")
+        for pt in [[104, 62], [106, 73], [108, 84], [220, 62], [222, 73], [224, 84]] {
+            c := PixelGetColor(cx + pt[1], cy + pt[2])
+            r := (c >> 16) & 255, g := (c >> 8) & 255, b := c & 255
+            if (r < 200 || g < 200 || b < 200 || Max(r, g, b) - Min(r, g, b) > 20)
+                return false
+        }
+        for pt in [[300, 25], [800, 25], [1500, 25], [1800, 25], [300, 110], [800, 110], [1500, 110], [85, 73]] {
+            c := PixelGetColor(cx + pt[1], cy + pt[2])
+            if (((c >> 16) & 255) > 30 || ((c >> 8) & 255) > 30 || (c & 255) > 30)
+                return false
+        }
+        return true
     } catch {
         return false
     } finally {
