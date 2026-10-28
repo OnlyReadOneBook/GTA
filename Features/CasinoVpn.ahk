@@ -3,7 +3,10 @@
 ; GTA 가 어떤 경로(Steam·바탕화면·Rockstar 런처)로 켜지든 PlayGTAV/GTA5_Enhanced 가 나타나는 순간 VPN(Proton 무료 NL, WireGuard) 을 켜고,
 ; 게임 화면에 체력 막대(HUD) 가 2초 간격 두 번 연속 보이면(온라인 세션 로딩이 끝남) CasinoVpnHoldSec 초 뒤에 끈다.
 ; 스토리 모드에도 같은 HUD 가 있어 스토리로 먼저 들어가면 그때 꺼진다(온라인 직행 설정 전제). 시간 상한은 없다(온라인 접속이 늦어도 끊지 않는다). 게임이 먼저 꺼지면 바로 끈다.
-; WireGuard 는 관리자 권한이 필요해 예약 작업 GTA-VPN-On/Off(가장 높은 권한) 로 부른다. 설정 파일은 vpn\gtanl.conf (깃 제외).
+; VPN 은 GTA 프로세스(GTA5_Enhanced·PlayGTAV·Rockstar 런처·SocialClubHelper)에만 건다. WireSock CLI 서비스 wiresock-client-service 가
+; vpn\gtanl-split.conf(AllowedApps, 깃 제외)로 앱별 분할 터널을 연다. 윈도우 전체 경로를 잡는 WireGuard 서비스(gtanl)는 쓰지 않는다
+; (1028: 전체 터널이 SSH·원격 데스크톱·Tailscale·러너까지 끊었다). 관리자 권한이 필요해 예약 작업 GTA-VPN-On/Off(가장 높은 권한) 가
+; sc start/stop 으로 서비스를 켜고 끈다.
 ; 매크로(Main) 와 따로 CasinoVpnWatch.ahk 가 시작 프로그램에서 돌며 이 파일을 쓴다. 시점별 기록은 %TEMP%\gta-casino-vpn.log.
 global gCasinoVpnOn := false, gCasinoVpnStart := 0, gCasinoVpnGtaSeen := 0, gCasinoVpnPrevRunning := false
 global gCasinoVpnHoldSec := 5, gCasinoVpnHudStreak := 0, gCasinoVpnHudCheck := 0
