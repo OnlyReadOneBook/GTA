@@ -696,7 +696,7 @@ EarnTaskMCTEnd() {
         ; 목록을 끝까지 한 번 이상 훑고도 못 찾았을 때만 '열린 화면 없음'으로 표시한다.
         deadline := A_TickCount + 12000
         names := ["mct_title", "bunker_confirm", "bunker_pending", "dj_confirm_solomun", "dj_confirm_tale", "bunker_page",
-            "bunker_entry", "nc_dj_menu", "mct_seated", "mct_need_ceo", "mct_terrorbyte_noboss", "mct_terrorbyte", "mct_sit"]
+            "bunker_entry", "nc_dj_menu", "mct_seated", "mct_need_ceo", "mct_terrorbyte", "mct_sit"]
         scanned := false, known := false
         Loop 60 {
             checked := 0

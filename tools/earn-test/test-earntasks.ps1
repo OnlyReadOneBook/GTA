@@ -627,9 +627,11 @@ EarnWaitSeen(name,area,timeoutMs) {
     return EarnUIReady(name)
 }
 EarnUIReady(name,*) {
-    global endScene
+    global endScene, endBoss
     if (name = endScene)
         return true
+    if (name = "mct_terrorbyte_noboss")
+        return endScene = "mct_terrorbyte" && !endBoss
     ; Parent page remains visible behind known confirmation dialogs.
     return name = "bunker_page" && (endScene = "bunker_confirm" || endScene = "bunker_pending")
         || name = "nc_dj_menu" && InStr(endScene,"dj_confirm_") = 1
@@ -775,10 +777,10 @@ cases := [
  ["mct_terrorbyte","",false,"original",true,"-"],
  ["mct_terrorbyte","retire",false,"original",false,"-"],
  ["mct_title","terrorbyte",false,"original",true,"C-"],
- ["mct_terrorbyte_noboss","",false,"original",true,""]
+ ["mct_terrorbyte","notboss",false,"original",true,""]
 ]
 for c in cases {
-    endScene := c[1], endFailure := c[2], endAbort := c[3], gEarnFail := c[4], endOrder := "", endLogs := [], endBoss := c[1] != "mct_terrorbyte_noboss"
+    endScene := c[1], endFailure := c[2], endAbort := c[3], gEarnFail := c[4], endOrder := "", endLogs := [], endBoss := c[2] != "notboss"
     result := EarnTaskMCTEnd()
     if (result != c[5] || endOrder != c[6] || (result && endBoss))
         throw Error("MCT cleanup: " c[1] "/" c[2] " order=" endOrder " result=" result)
