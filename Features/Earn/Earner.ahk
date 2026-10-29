@@ -481,11 +481,28 @@ EarnTick() {
         delay := 0
         gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: attempts, nextTick: A_TickCount + delay}
         EarnLog("복구 대기: " task.id " 정리 미확인 (" gEarnFail ") → 확인된 정리 경로 바로 재시도; 수익 작업 대기")
-        ; 복구가 막혀도 겉으로는 아무 표시가 없었다(1029 02:50~12:55 2,449번 실패하는 동안 창고 확인이 멈춰 나클 만재를 10시간 늦게 알림).
-        ; 20번(약 5분)째와 그 뒤 240번(약 1시간)마다 다른 작업이 막혀 있다고 알린다.
-        if (attempts = 20 || Mod(attempts, 240) = 0) {
-            EarnLog("복구 막힘: " task.id " 정리 " attempts "번 실패, 다른 수익 작업 대기 중 (" gEarnFail ")")
-            ShowTooltip("⚠ 수익 정리 복구 " attempts "번 실패: 다른 작업 대기 중, 화면 확인 필요", 15000)
+        ; 복구가 막히면 다른 작업이 전부 멈췄다(1029 02:50~12:55 2,449번 실패하는 동안 직원 파견·창고 확인이 10시간 멈춤).
+        ; EarnRecoveryGiveUpAttempts(기본 20번, 약 5분)째에는 복구를 접는다. 본문을 끝낸 작업은 그 결과로 확정하고 나머지는 바로 다시 잡는다.
+        ; MCT 작업은 시작할 때 위치를 다시 확인하고 끝에서 스스로 정리하므로, 화면이 그대로면 다음 묶음이 다시 복구에 들어간다.
+        giveUp := config["Settings"].Get("EarnRecoveryGiveUpAttempts", 20)
+        if (giveUp > 0 && attempts >= giveUp) {
+            gEarnRecovery := ""
+            EarnLog("복구 포기: " task.id " 정리 " attempts "번 실패 (" gEarnFail ") → 다른 수익 작업 재개")
+            ShowTooltip("⚠ 수익 정리 복구 " attempts "번 실패: 접고 다른 작업 재개, 화면 확인 필요", 15000)
+            done := Map()
+            for result in outcome.results {
+                if (!result.ok)
+                    continue
+                done[result.task.id] := true
+                EarnFinishScheduledTask(result)
+                if (!gEarnOn)
+                    return
+            }
+            for t in dueTasks
+                if (!done.Has(t.id))
+                    gEarnDue[t.id] := A_TickCount
+            EarnAFKTick()
+            return
         }
         ; 알아본 화면에서 HUD 확인에 막히면 정리는 키를 하나도 안 보낸다. 1023 05:31 부터 이렇게 무입력으로 돌다 방치 킥을 당했다(06:04 녹화).
         ; 시도 사이마다 AFK 마우스 왕복(간격은 AntiAFKTick 이 지킨다)을 넣어 재시도가 길어져도 입력이 끊기지 않게 한다.

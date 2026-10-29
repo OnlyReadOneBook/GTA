@@ -122,6 +122,12 @@ Loop 10 {
 }
 Check(gEarnOn && IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && backPresses = 10 && !HasLog("꺼짐"),
     "unrecognized cleanup keeps retrying with one back press each time so input never goes silent and earn stays on")
+Loop 9 {
+    fakeTick := gEarnRecovery.nextTick
+    EarnTick()
+}
+Check(gEarnOn && !IsObject(gEarnRecovery) && HasLog("복구 포기:") && !HasLog("복구 완료:") && !HasLog("꺼짐"),
+    "recovery gives up after 20 failed cleanups so other earn tasks are no longer blocked")
 for boundary in ["boss-unconfirmed", "menu-close-failed", "hud-lost"] {
     Reset()
     endOK := false, endNoScreen := true
@@ -1649,7 +1655,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 255 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 256 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
