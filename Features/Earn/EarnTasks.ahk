@@ -1,4 +1,4 @@
-; === 수익 자동화 작업 ===
+﻿; === 수익 자동화 작업 ===
 ; 각 작업은 성공하면 true, 화면 확인이 안 되면 EarnFail(까닭) 으로 false 를 돌려준다.
 ; MCT 전용 모드는 열려 있는 터미널에 머문다. 이동 모드는 아케이드 MCT를 거점으로 쓴다.
 
@@ -759,6 +759,13 @@ EarnTaskMCTEnd() {
             if (!EarnUIClick("nc_dj_menu", 495, 596) || !EarnSleep(500)
                 || !EarnUIBackToMCT("nc_dj_menu", 1))
                 return EarnFail("MCT 정리: 나이트클럽 Home 복귀 미확인")
+        }
+        ; 이미 보스가 아니면 해제할 것이 없다. 1029 02:50~12:55 이 안내가 떠 있는 테러바이트 앞에서 해제용 상호작용 메뉴가
+        ; HUD 판정에 막혀 2,411번 실패했고, 그동안 다른 수익 작업이 모두 대기했다(Steam 녹화 12:54 확인).
+        if (EarnUIReady("mct_terrorbyte_noboss")) {
+            DiscordHUDMCTSet(false)
+            EarnLog("MCT 정리: 테러바이트 앞, 이미 보스 아님")
+            return true
         }
         if (EarnUIReady("mct_terrorbyte")) {
             DiscordHUDMCTSet(false)

@@ -1,4 +1,4 @@
-; === 수익 자동화 스케줄러 (Vinewood 금고·직원 파견 · 벙커 보급 · DJ 교체 · 창고 직원) ===
+﻿; === 수익 자동화 스케줄러 (Vinewood 금고·직원 파견 · 벙커 보급 · DJ 교체 · 창고 직원) ===
 ; Main 시작 시 유휴 앱 모드(재시작 전 F9 전체 수익이었으면 전체 수익). F9 두 번은 전체 수익과 유휴 앱을 전환하고 End는 모두 멈춘다.
 ; 때가 된 벙커·DJ·창고는 MCT를 한 번 열어 묶어 처리하고 한 번 닫는다. 금고·앱 파견은 그다음 별도로 한다.
 ; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
@@ -481,6 +481,12 @@ EarnTick() {
         delay := 0
         gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: attempts, nextTick: A_TickCount + delay}
         EarnLog("복구 대기: " task.id " 정리 미확인 (" gEarnFail ") → 확인된 정리 경로 바로 재시도; 수익 작업 대기")
+        ; 복구가 막혀도 겉으로는 아무 표시가 없었다(1029 02:50~12:55 2,449번 실패하는 동안 창고 확인이 멈춰 나클 만재를 10시간 늦게 알림).
+        ; 20번(약 5분)째와 그 뒤 240번(약 1시간)마다 다른 작업이 막혀 있다고 알린다.
+        if (attempts = 20 || Mod(attempts, 240) = 0) {
+            EarnLog("복구 막힘: " task.id " 정리 " attempts "번 실패, 다른 수익 작업 대기 중 (" gEarnFail ")")
+            ShowTooltip("⚠ 수익 정리 복구 " attempts "번 실패: 다른 작업 대기 중, 화면 확인 필요", 15000)
+        }
         ; 알아본 화면에서 HUD 확인에 막히면 정리는 키를 하나도 안 보낸다. 1023 05:31 부터 이렇게 무입력으로 돌다 방치 킥을 당했다(06:04 녹화).
         ; 시도 사이마다 AFK 마우스 왕복(간격은 AntiAFKTick 이 지킨다)을 넣어 재시도가 길어져도 입력이 끊기지 않게 한다.
         EarnAFKTick()
@@ -1073,6 +1079,7 @@ EarnStatusDetail() {
         return "수익: " gEarnCurrent " 진행 중"
     if (IsObject(gEarnRecovery))
         return "수익: " gEarnRecovery.task.label " 정리 복구 대기 " Max(0, Ceil((gEarnRecovery.nextTick - A_TickCount) / 1000)) "초"
+            . (gEarnRecovery.attempts >= 20 ? " · " gEarnRecovery.attempts "번 실패, 화면 확인 필요" : "")
     nextLabel := "", nextIn := 0
     for t in gEarnTasks {
         if (!t.on || !EarnTaskAllowed(t.id) || gEarnHeld.Has(t.id))

@@ -1,4 +1,4 @@
-; === 수익 자동화 공통: 화면 확인 · 상호작용 메뉴 · 스폰 위치 · 세션 재접속 ===
+﻿; === 수익 자동화 공통: 화면 확인 · 상호작용 메뉴 · 스폰 위치 · 세션 재접속 ===
 ; 이 파일의 함수는 게임에 키를 하나 보낼 때마다 "지금 화면에 무엇이 보이는지" 를 템플릿(Images\Earn\<가로>x<세로>\*.png)으로 확인한다.
 ; 확인이 안 되면 그 자리에서 false 를 돌려주고 더 누르지 않는다. 되돌리는 키는 Backspace·M 만 쓴다(Esc 금지: 런처 종료창).
 ; 템플릿은 1920x1080 테두리 없는 창에서 뜬 것이다. 해상도가 다르면 그 해상도 폴더에 같은 이름으로 떠 넣어야 동작한다(없으면 멈춘다).
@@ -186,6 +186,9 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; 테러바이트 안내는 CEO 여부에 따라 두 모양이다. CEO 일 때는 'Touchscreen computer / Master Control Terminal'.
     ; 반투명 상자라 뒤 배경에 따라 픽셀이 바뀌고, 남은 커서가 한 줄을 가릴 수 있다(1003 17:15 실측).
     ; 그래서 세 줄 중 하나만 맞아도 인정하고 허용 오차를 60으로 둔다.
+    ; 보스가 아닐 때만 뜨는 'Register as a Boss to access the' 줄. 정리에서 보스 해제를 건너뛰는 근거로 쓴다.
+    if (name = "mct_terrorbyte_noboss")
+        return TemplateSeen("Earn", "mct_terrorbyte_reg", IsObject(area) ? area : [0,0,0.3,0.25], &fx, &fy, Max(variation, 60))
     if (name = "mct_terrorbyte") {
         for part in ["mct_terrorbyte", "mct_terrorbyte_reg", "mct_terrorbyte_ceo"]
             if (TemplateSeen("Earn", part, IsObject(area) ? area : [0,0,0.3,0.25], &fx, &fy, Max(variation, 60)))

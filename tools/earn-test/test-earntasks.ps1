@@ -627,9 +627,11 @@ EarnWaitSeen(name,area,timeoutMs) {
     return EarnUIReady(name)
 }
 EarnUIReady(name,*) {
-    global endScene
+    global endScene, endBoss
     if (name = endScene)
         return true
+    if (name = "mct_terrorbyte_noboss")
+        return endScene = "mct_terrorbyte" && !endBoss
     ; Parent page remains visible behind known confirmation dialogs.
     return name = "bunker_page" && (endScene = "bunker_confirm" || endScene = "bunker_pending")
         || name = "nc_dj_menu" && InStr(endScene,"dj_confirm_") = 1
@@ -774,10 +776,11 @@ cases := [
  ["mct_title","close_error",false,"original",false,"C"],
  ["mct_terrorbyte","",false,"original",true,"-"],
  ["mct_terrorbyte","retire",false,"original",false,"-"],
- ["mct_title","terrorbyte",false,"original",true,"C-"]
+ ["mct_title","terrorbyte",false,"original",true,"C-"],
+ ["mct_terrorbyte","notboss",false,"original",true,""]
 ]
 for c in cases {
-    endScene := c[1], endFailure := c[2], endAbort := c[3], gEarnFail := c[4], endOrder := "", endLogs := [], endBoss := true
+    endScene := c[1], endFailure := c[2], endAbort := c[3], gEarnFail := c[4], endOrder := "", endLogs := [], endBoss := c[2] != "notboss"
     result := EarnTaskMCTEnd()
     if (result != c[5] || endOrder != c[6] || (result && endBoss))
         throw Error("MCT cleanup: " c[1] "/" c[2] " order=" endOrder " result=" result)
@@ -786,11 +789,12 @@ for c in cases {
     if (c[4] = "" && ((!result && gEarnFail = "") || (result && gEarnFail != "")))
         throw Error("Cleanup must retain its own failure only when no prior failure exists")
 }
-FileAppend("PASS MCTEnd cases=35`n", "*")
+FileAppend("PASS MCTEnd cases=36`n", "*")
 ExitApp(0)
 '@
     $mctEndDriver += "`n" + $mctCleanupSupport
-    Invoke-EarnOfflineCheck 'MCTEnd' 'EarnTaskMCTEnd' $mctEndDriver 35
+    $mctEndDriver += "`nEarnLog(*) => 0`n"
+    Invoke-EarnOfflineCheck 'MCTEnd' 'EarnTaskMCTEnd' $mctEndDriver 36
     $deadlineDriver = @'
 global endScene := "unknown", endFailure := "", endOrder := "", endAbort := false, endBoss := true, gEarnFail := "original", endLogs := [], gEarnCleanupNoScreen := false, gEarnCleanupTimedOut := false
 global clockMs := 0, reads := 0, abortRead := 0, foundRead := 0
@@ -832,6 +836,7 @@ EarnSleep(ms) {
     $deadlineSupport = $mctCleanupSupport.Replace((Get-EarnFunctionBody $mctCleanupSupport 'EarnUIReady'), '')
     $deadlineSupport = $deadlineSupport.Replace('EarnSleep(*) => endFailure != "sleep"', '')
     $deadlineDriver += "`n" + $deadlineSupport
+    $deadlineDriver += "`nEarnLog(*) => 0`n"
     Invoke-EarnOfflineCheck 'MCTEndDeadline' 'EarnTaskMCTEnd' $deadlineDriver 4
     $mctEndPromptDriver = @'
 global endScene := "", endFailure := "", endOrder := "", endAbort := false, endBoss := true, gEarnFail := "", endLogs := []
@@ -966,6 +971,7 @@ EarnTaskMCTEndWithManualRetry() => EarnTaskMCTEnd()
 '@
     $mctBeginCleanupDriver += "`n" + $mctCleanupSupport + "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd')
     $mctBeginCleanupDriver += "`nEarnSoftFail(reason, *) => EarnFail(reason)`n"
+    $mctBeginCleanupDriver += "`nEarnLog(*) => 0`n"
     $mctBeginCleanupDriver += "`nEarnMCTSpotSweep() => false`n"
     $mctBeginCleanupDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTSpotSeen') + "`nEarnMCTTurnInPlace() => false`nEarnMCTOpenBlind() => false`nEarnMCTCloseLeftoverApp() => `"none`"`n"
     Invoke-EarnOfflineCheck 'MCTBeginCleanup' 'EarnTaskMCTBegin' $mctBeginCleanupDriver 14
