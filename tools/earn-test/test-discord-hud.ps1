@@ -27,10 +27,10 @@ ExitApp(0)
     $production = $source.Substring($source.IndexOf('global gDiscordHUDMCTOpen'))
     $tasks = Get-Content (Join-Path $root 'Features\Earn\EarnTasks.ahk') -Raw -Encoding UTF8
     $production += "`n" + [regex]::Match($tasks, '(?ms)^EarnUIReady\([^\r\n]*\) \{.*?^\}').Value
-    foreach ($name in @('DiscordHUDWindowList','DiscordHUDWindowRead','DiscordHUDWindowVisible')) {
+    foreach ($name in @('DiscordHUDWindowList','DiscordHUDWindowRead','DiscordHUDWindowVisible','DiscordHUDOwnedPath','DiscordHUDOwnedSave','DiscordHUDOwnedLoad')) {
         $production = [regex]::Replace($production, ('(?ms)^' + $name + '\([^\r\n]*\) \{.*?^\}\s*'), '')
     }
-    if ($production -match 'DllCall\(|WinGet|ShowWindow|WinActivate|\bRun\(') { throw 'Native side effect remains in HUD fixture' }
+    if ($production -match 'DllCall\(|WinGet|ShowWindow|WinActivate|\bRun\(|FileAppend|FileRead|FileDelete') { throw 'Native side effect remains in HUD fixture' }
     if (-not $source.Contains('DiscordHUDMainWindowIdentity(title, WinGetProcessName("ahk_id " hwnd))') -or
         -not $source.Contains('GetProcessTimes') -or -not $source.Contains('visible ? 8 : 0')) {
         throw 'Exact HUD identity and non-activating visibility boundary must be retained'
@@ -45,7 +45,7 @@ global timers := [], exits := [], gEarnOn := true, config := Map("Settings", Map
 global gEarnBusy := false, focused := true, gameExists := true, GTA_WIN := "fake", health := true
 global gEarnGuardArmed := false, gAbort := false, gEarnUserAbort := false
 global templates := Map(), probeReads := [], probeBackground := true
-global abortNow := false, abortOnHide := ""
+global abortNow := false, abortOnHide := "", persisted := Map()
 @PRODUCTION@
 try {
     windows[1] := Window(1), windows[2] := Window(2, false)
@@ -195,6 +195,19 @@ try {
     Check(!windows[1].visible && windows[3].visible, "Store main hidden without touching settings")
     DiscordHUDMCTSet(false)
     Check(windows[1].visible, "Store main restored after MCT")
+    ; 매크로 교체: 숨긴 기록이 남은 창을 다음 매크로가 이어받아 복원한다. 기록에 없는 숨은 창(windows[2])은 그대로 둔다.
+    DiscordHUDMCTSet(true)
+    Check(!windows[1].visible && persisted.Has(1) && persisted[1].pid = windows[1].pid, "hidden ownership persisted")
+    gDiscordHUDOwned := Map(), gDiscordHUDMCTOpen := false, gEarnBusy := false
+    DiscordHUDVisibilityInit()
+    Check(windows[1].visible && !gDiscordHUDOwned.Has(1) && persisted.Count = 0, "replaced macro adopts persisted hidden HUD and restores it")
+    Check(!windows[2].visible, "unrecorded hidden window stays hidden")
+    gEarnBusy := true
+    DiscordHUDMCTSet(true)
+    windows[1].pid += 1
+    gDiscordHUDOwned := Map(), gDiscordHUDMCTOpen := false, gEarnBusy := false
+    DiscordHUDVisibilityInit()
+    Check(!windows[1].visible && gDiscordHUDOwned.Count = 0, "identity mismatch is not adopted")
     FileAppend("PASS DiscordHUD: " n " cases; no window or game input`n", "*")
     ExitApp(0)
 } catch as fixtureFailure {
@@ -209,6 +222,13 @@ Check(ok, message) {
 }
 Window(id, visible := true, title := "DiscordChatHUD C#") => {hwnd: id, pid: 100+id, created: 12345, title: title, visible: visible, minimized: false}
 DiscordHUDWindowList() => [1, 2, 3, 4, 5]
+DiscordHUDOwnedSave(owned) {
+    global persisted
+    persisted := Map()
+    for hwnd, saved in owned
+        persisted[hwnd] := {hwnd: saved.hwnd, pid: saved.pid, created: saved.created, title: saved.title}
+}
+DiscordHUDOwnedLoad() => persisted.Clone()
 DiscordHUDWindowRead(hwnd) {
     if (failRead)
         throw Error("identity unavailable")
@@ -246,7 +266,7 @@ OnExit(fn) => exits.Push(fn)
 '@
     $driver = $driver.Replace('@PRODUCTION@', $production)
     $production = ''
-    $expected = '^PASS DiscordHUD: 78 cases; no window or game input$'
+    $expected = '^PASS DiscordHUD: 82 cases; no window or game input$'
 }
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath

@@ -39,16 +39,16 @@ foreach ($path in @('Images/Earn/1920x1080/afk_vinewood_title.png', 'Images/Earn
 }
 
 $ci = Get-CiCheckPlan @('tools/ci/run-checks.ps1')
-Check ($ci.Full -and $ci.Suites.Count -eq 44 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
+Check ($ci.Full -and $ci.Suites.Count -eq 45 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
 
 $workflow = Get-CiCheckPlan @('.github/workflows/ci.yml')
-Check ($workflow.Full -and $workflow.Suites.Count -eq 44 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
+Check ($workflow.Full -and $workflow.Suites.Count -eq 45 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
 
 $gitStylePath = Get-CiCheckPlan @('./Features/Earn/EarnStaff.ahk')
 Check (($gitStylePath.Suites -join ',') -eq 'test-earner,test-earnvinewood,test-earnstaff') 'leading ./ is normalized without losing dot-prefixed paths'
 
 $unknown = Get-CiCheckPlan @('Features/NewFeature.ahk')
-Check ($unknown.Full -and $unknown.Suites.Count -eq 44) 'unknown production paths conservatively run all suites'
+Check ($unknown.Full -and $unknown.Suites.Count -eq 45) 'unknown production paths conservatively run all suites'
 $ledger = Get-CiCheckPlan @('Features/Earn/EarnLedger.ahk')
 Check (-not $ledger.Full -and ($ledger.Suites -join ',') -eq 'test-earner,test-earnledger') 'ledger source selects transaction and scheduler checks'
 $ledgerTest = Get-CiCheckPlan @('tools/earn-test/test-earnledger.ps1')
@@ -56,6 +56,8 @@ Check (($ledgerTest.Suites -join ',') -eq 'test-earnledger') 'ledger test select
 
 $frameWatch = Get-CiCheckPlan @('tools/frame-watch/frame-watch.ps1')
 Check (-not $frameWatch.Full -and ($frameWatch.Suites -join ',') -eq 'test-perf-watch') 'frame watcher selects performance regressions'
+$autostart = Get-CiCheckPlan @('Features/MacroAutoStart.ahk')
+Check (-not $autostart.Full -and ($autostart.Suites -join ',') -eq 'test-macro-autostart' -and $autostart.PackageRequired) 'macro autostart source selects its launch regression and package'
 $hud = Get-CiCheckPlan @('Features/DiscordHUD.ahk')
 Check (-not $hud.Full -and ($hud.Suites -join ',') -eq 'test-earner,test-discord-hud,test-discordhud-launch' -and $hud.PackageRequired) 'HUD source selects lifecycle, visibility, and launch regressions'
 $earner = Get-CiCheckPlan @('Features/Earn/Earner.ahk')

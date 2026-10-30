@@ -8,7 +8,7 @@ function Get-CiCheckPlan {
         'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-discord-hud','test-discordhud-launch','test-overlay-place','test-memguard','test-earndj',
         'test-phone-call-template','test-earnocr','test-notification-dismiss','test-mct-seated-template',
         'test-bunker-templates','test-dj-templates','test-earnwarehouse-templates','test-afk-overlays','test-session-guard',
-        'test-gui-input','test-perf-watch','test-fps-helper','test-screen-capture','test-gta-mode','test-frame-feed','test-steam-launch'
+        'test-gui-input','test-perf-watch','test-fps-helper','test-screen-capture','test-gta-mode','test-frame-feed','test-steam-launch','test-macro-autostart'
     )
     $selected = [Collections.Generic.List[object]]::new()
     $packageRequired = [bool]$Full
@@ -71,6 +71,7 @@ function Get-CiCheckPlan {
         if ($path -match '^Features/DiscordHUD\.ahk$') { $selected.AddRange(@('test-earner','test-discord-hud','test-discordhud-launch')); $packageRequired = $true; continue }
         if ($path -match '^Features/Overlay\.ahk$') { $selected.AddRange(@('test-earner','test-overlay-place')); $packageRequired = $true; continue }
         if ($path -match '^Features/MemoryGuard\.ahk$') { $selected.Add('test-memguard'); $packageRequired = $true; continue }
+        if ($path -match '^Features/MacroAutoStart\.ahk$' -or $path -eq 'CasinoVpnWatch.ahk') { $selected.Add('test-macro-autostart'); $packageRequired = $true; continue }
         if ($path -match '^Images/Earn/[^/]+/afk_(phone_frame|vinewood_title)\.png$' -or
             $path -eq 'tools/earn-test/build-afk-overlay-templates.ps1' -or $path -match '^tools/earn-test/afk-overlay-fixtures/') {
             $selected.Add('test-afk-overlays')

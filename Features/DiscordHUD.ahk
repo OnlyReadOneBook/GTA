@@ -100,8 +100,22 @@ global gDiscordHUDError := ""
 
 DiscordHUDVisibilityInit() {
     OnExit(DiscordHUDVisibilityExit)
+    DiscordHUDAdoptOwned()
     SetTimer(DiscordHUDVisibilityTick, 1000, -10)
     DiscordHUDVisibilityTick()
+}
+
+; 앞선 매크로가 숨긴 채 강제 종료된 HUD 를 이어받는다. 숨길 때 기록해 둔 창이 같은 창(hwnd·pid·생성 시각·제목)으로 아직 숨어 있으면
+; 소유로 넣어 첫 tick 이 복원한다. 매크로가 숨기지 않은 창은 그대로 둔다(1030: 매크로 교체 뒤 오버레이가 5시간 넘게 숨어 있었다).
+DiscordHUDAdoptOwned() {
+    global gDiscordHUDOwned
+    for hwnd, saved in DiscordHUDOwnedLoad() {
+        current := DiscordHUDWindowRead(hwnd)
+        if (!DiscordHUDVisibilitySame(saved, current) || current.visible)
+            continue
+        gDiscordHUDOwned[hwnd] := saved
+        MacroLog("hud", "앞선 매크로가 숨긴 HUD 를 이어받음 hwnd=" hwnd " pid=" saved.pid)
+    }
 }
 
 DiscordHUDVisibilityWanted() {
@@ -205,6 +219,8 @@ DiscordHUDVisibilitySync(hide) {
         }
         for hwnd in stale
             gDiscordHUDOwned.Delete(hwnd)
+        if (stale.Length)
+            DiscordHUDOwnedSave(gDiscordHUDOwned)
         if (!hide)
             return
         for hwnd in DiscordHUDWindowList() {
@@ -215,6 +231,7 @@ DiscordHUDVisibilitySync(hide) {
                 continue
             ; 실패/예외 이후에도 원래 visible이었던 이 창의 복원 책임은 남긴다.
             gDiscordHUDOwned[hwnd] := current
+            DiscordHUDOwnedSave(gDiscordHUDOwned)
             if (!DiscordHUDWindowVisible(hwnd, false))
                 throw Error("HUD 숨김 미확인. 화면 판독을 시작하지 않음")
             MacroLog("hud", "MCT 화면 보호: HUD 숨김 hwnd=" hwnd " pid=" current.pid)
@@ -222,6 +239,37 @@ DiscordHUDVisibilitySync(hide) {
     } finally {
         Critical previousCritical
     }
+}
+
+; 숨긴 창의 소유 기록. 매크로가 교체·강제 종료돼도 다음 매크로가 읽어 복원한다. 한 줄에 hwnd·pid·생성 시각·제목(탭 구분).
+DiscordHUDOwnedPath() {
+    return A_Temp "\gta-hud-hidden.txt"
+}
+
+DiscordHUDOwnedSave(owned) {
+    try {
+        text := ""
+        for hwnd, saved in owned
+            text .= hwnd "`t" saved.pid "`t" saved.created "`t" saved.title "`n"
+        try FileDelete(DiscordHUDOwnedPath())
+        if (text != "")
+            FileAppend(text, DiscordHUDOwnedPath(), "UTF-8")
+    }
+}
+
+DiscordHUDOwnedLoad() {
+    owned := Map()
+    try {
+        if (!FileExist(DiscordHUDOwnedPath()))
+            return owned
+        Loop Parse FileRead(DiscordHUDOwnedPath(), "UTF-8"), "`n", "`r" {
+            parts := StrSplit(A_LoopField, "`t")
+            if (parts.Length < 4 || !IsInteger(parts[1]) || !IsInteger(parts[2]) || !IsInteger(parts[3]))
+                continue
+            owned[parts[1] + 0] := {hwnd: parts[1] + 0, pid: parts[2] + 0, created: parts[3] + 0, title: parts[4]}
+        }
+    }
+    return owned
 }
 
 ; 창 조회/가시성 변경을 분리해 회귀 검사는 실제 창 API 없이 실행한다.
