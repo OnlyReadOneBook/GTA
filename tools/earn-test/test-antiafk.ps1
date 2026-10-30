@@ -9,7 +9,7 @@ $screenSource = Get-Content (Join-Path $SourceRoot 'Core\Screen.ahk') -Raw -Enco
 $source += "`n" + $screenSource
 $functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMousePulse', 'AFKKeysHeld', 'AFKMenuSeen', 'AFKFreeHud', 'AFKPhoneOrAppOpen', 'AFKHudVisible',
     'AFKRefocusGTA', 'AFKRefocusFailed', 'AFKForegroundLabel', 'AFKPhysicalIdleMs', 'AFKOthersIdleMs', 'AFKSelfInput',
-    'AFKRefocusAllowed', 'AFKRefocusCanceled', 'HealthHudVisible', 'HealthHudColors') | ForEach-Object {
+    'AFKRefocusAllowed', 'AFKRefocusCanceled', 'HealthHudVisible', 'HealthHudColors', 'HealthHudBand', 'HealthHudColumn') | ForEach-Object {
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^)\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "$_ missing" }
     $body
@@ -18,6 +18,8 @@ $functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMousePulse', 'AFKKeysHeld',
 # A_TickCount 는 AFKWait 만 앞으로 미는 가짜 시계 FakeTick() 으로 바꾼다. 실제 시계를 쓰면 idleMs 를 고정한 채
 # 틱 사이에 2초 넘게 흐를 때(병렬 CI 부하) AFKRefocusGTA 가 새 유휴 구간으로 보고 실패 횟수를 비운다.
 $production = ($functions -join "`n").Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TimeIdle', 'AnyIdle()').Replace('A_TickCount', 'FakeTick()')
+# 시험용 HUD 격자(FakeHudGrid). HealthHudGrid(화면 캡처)는 드라이버가 이것으로 바꿔 끼운다.
+$production += "`n" + (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'hud-band-fixture.ahk') -Raw -Encoding UTF8)
 # Main의 실제 유지보수 등록을 가짜 스케줄러로 실행한다. 과거 소스의 F24 probe도
 # 같은 테스트에 넣어 AFK 복귀가 영구 연기되는 회귀를 재현할 수 있다.
 $mainSource = Get-Content (Join-Path $SourceRoot 'Main.ahk') -Raw -Encoding UTF8
@@ -325,6 +327,26 @@ RunMaintenanceTimers()
 AntiAFKTick()
 Check(activations = 0 && events.Length = 0 && maintenanceProbeSends = 0,
     "away mode and maintenance still defer to physical user input")
+; HUD 확인은 체력 양과 무관하다. 0·30·70·100% 와 HDR 배율에서 모두 보이고, 막대가 없거나 창 크기가 다르면 안 보인다.
+for pct in [0, 30, 70, 100] {
+    Reset()
+    hudVisible := true, hudHealthPct := pct
+    Check(AFKHudVisible() && hudReads = 1, "AFK HUD visible at health " pct "%")
+    Reset()
+    hudVisible := true, hudHealthPct := pct, hudGain := 1.55
+    Check(AFKHudVisible(), "AFK HUD visible at health " pct "% under HDR gain")
+}
+Reset()
+Check(!AFKHudVisible() && hudReads = 1, "AFK HUD hidden without a bar")
+Reset()
+hudVisible := true, hudWidth := 2560, hudHeight := 1600
+Check(!AFKHudVisible() && hudReads = 0, "AFK HUD needs the 1920x1080 client")
+Reset()
+hudVisible := true, hudWindowError := true
+Check(!AFKHudVisible(), "AFK HUD read failure is not visible")
+Reset()
+hudVisible := true, hudHealthPct := 30, hudOriginX := 320, hudOriginY := 260
+Check(AFKHudVisible() && hudGridX = 352 && hudGridY = 1306, "AFK HUD grid follows the client origin")
 FileAppend("PASS AntiAFK: " checkCount " cases; no game input`n", "*")
 ExitApp(0)
 Reset() {
@@ -347,6 +369,7 @@ Reset() {
     menuState := "mct_title", menuReads := 0, hideBeforeMenuKey := false, menuOpenWorks := true, menuCloseWorks := true, menuChanges := 0, failMenuWaitAt := 0
     seatedTarget := "mct_seated", seatedReturnState := "mct_seated"
     hudVisible := false, hudReads := 0, hideHudAfter := 0, hideHudOnClose := false, hudOriginX := 0, hudOriginY := 0,
+        hudHealthPct := 100, hudGain := 1.0, hudGridX := -1, hudGridY := -1,
         hudWidth := 1920, hudHeight := 1080, hudWindowError := false, visibleOverlay := "", guardAssetMissing := false, menuReturnState := "", gImageRoot := "fake",
         phonePresses := 0, phoneCloseAfter := 2
     logs := [], waits := [], warnings := []
@@ -478,12 +501,14 @@ CoordMode(kind, mode) {
         throw Error("Unexpected coordinate-mode mutation")
 }
 PixelGetColor(x, y) {
-    global hudReads
-    if (x < hudOriginX+40 || x > hudOriginX+85 || Mod(x-hudOriginX-40,3) || y != hudOriginY+1053)
-        throw Error("HUD samples leave the physical health-bar line")
-    if (x = hudOriginX+40)
-        hudReads++
-    return hudVisible && (!hideHudAfter || hudReads <= hideHudAfter) ? 0xA5FFAC : 0
+    throw Error("HUD reads must capture the bar grid once, not sample pixels")
+}
+; 화면 캡처 대신 시험 격자. 클라이언트 원점을 그대로 받는지 기록한다.
+HealthHudGrid(cx, cy) {
+    global hudReads, hudGridX, hudGridY
+    hudReads++, hudGridX := cx + 32, hudGridY := cy + 1046
+    visible := hudVisible && (!hideHudAfter || hudReads <= hideHudAfter)
+    return FakeHudGrid(hudHealthPct, hudGain, 100, false, false, !visible)
 }
 FileExist(path) => guardAssetMissing ? "" : "A"
 AFKWait(ms) {

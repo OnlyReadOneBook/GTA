@@ -7,7 +7,12 @@ global gImageRoot := A_ScriptDir "\Images"   ; 템플릿 폴더 뿌리 (시험 �
 ; 이 배율 사본으로 MCT·벙커·DJ·창고 템플릿 16종이 차이 0~8로 맞았고, 다른 화면에는 맞지 않았다.
 global gTemplateGains := ["1.55"]
 
-; 실측 체력 막대의 가로 연속성. HUD 존재만 확인하며 전화·메뉴 제외는 소비자가 수행한다.
+; 맨 게임 HUD 판정. 미니맵 밑 체력·방어구 막대 자리(1920x1080 클라이언트 기준 x 32~296, y 1049~1057)의 구조를 본다.
+; 체력이 깎이면 막대 색이 밝은 초록 → 어두운 초록(24562D) → 빈사 때 붉은 깜빡임으로 바뀌므로 색으로 판정하지 않는다
+; (1030 실측: 체력 70% 에서 밝은 칸이 모자라 금고·파견이 10시간 'HUD 미확인'). 대신 어떤 체력이든 변하지 않는 것,
+; 즉 세로 9픽셀이 같은 색으로 평평하고(채도 있음) 바로 아래 줄이 어두운 HUD 테두리인 가로 띠를 찾는다.
+; 1010 실측 HDR(채널마다 약 1.55배 밝음)에서도 평평함·채도·아래 테두리와의 밝기 차는 그대로라 배율 사본이 필요 없다.
+; HUD 존재만 확인하며 전화·메뉴 제외는 소비자가 수행한다.
 HealthHudVisible() {
     hwnd := IsGTAActive()
     if (!hwnd)
@@ -17,12 +22,13 @@ HealthHudVisible() {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
         if (cw != 1920 || ch != 1080)
             return false
-        CoordMode("Pixel", "Screen")
-        ; 미니맵 나침반의 N 아이콘이 카메라 방향에 따라 막대 위(x 60~76 근처)로 돌아와 앞쪽 16점(x 40~85) 중 6점을 가렸다
-        ; (1010 07:46 실측: MCT 앞에서 회전·메뉴가 'HUD 미확인'으로 반복 실패). 초록 막대 전체(x 40~164)를 4px 간격으로 본다.
+        grid := HealthHudGrid(cx, cy)
+        if (HealthHudBand(grid))
+            return true
+        ; 보조: 예전 색 판정. 막대 가운데 줄(y 1053)을 x 40~164 에서 4px 간격으로 본다(미니맵 나침반 N 아이콘이 앞쪽을 가릴 수 있다).
         colors := []
         Loop 32
-            colors.Push(PixelGetColor(cx + 40 + (A_Index-1)*4, cy + 1053))
+            colors.Push(grid[8][9 + (A_Index-1)*4])
         return HealthHudColors(colors)
     } catch {
         return false
@@ -32,11 +38,94 @@ HealthHudVisible() {
     }
 }
 
+; 막대 자리 격자. 클라이언트 (32, 1046) 부터 가로 265 x 세로 15 픽셀을 한 번에 떠서(BitBlt) 줄마다 0xRRGGBB 배열로 돌려준다.
+; grid[줄][칸]: 줄 1 = y 1046, 줄 8 = y 1053(막대 가운데), 줄 14 = y 1059(막대 아래 테두리). 칸 1 = x 32.
+; PixelGetColor 는 한 점에 3~4ms 라(1010 실측 16점 109~125ms) 수천 점을 그 길로 읽지 않는다.
+; 자리 상수는 시험 스크립트가 함수 본문만 떼어 쓰므로 전역 대신 함수 안에 둔다.
+HealthHudGrid(cx, cy) {
+    w := 265, h := 15
+    hdc := 0, mdc := 0, dib := 0, old := 0
+    try {
+        hdc := DllCall("GetDC", "ptr", 0, "ptr")
+        if (!hdc)
+            throw Error("screen dc unavailable")
+        bi := Buffer(40, 0)
+        NumPut("uint", 40, "int", w, "int", -h, "ushort", 1, "ushort", 32, bi)
+        bits := 0
+        dib := DllCall("CreateDIBSection", "ptr", hdc, "ptr", bi, "uint", 0, "ptr*", &bits, "ptr", 0, "uint", 0, "ptr")
+        mdc := DllCall("CreateCompatibleDC", "ptr", hdc, "ptr")
+        if (!dib || !bits || !mdc)
+            throw Error("capture buffer unavailable")
+        old := DllCall("SelectObject", "ptr", mdc, "ptr", dib, "ptr")
+        if (!old || old = -1)
+            throw Error("capture selection failed")
+        if (!DllCall("BitBlt", "ptr", mdc, "int", 0, "int", 0, "int", w, "int", h, "ptr", hdc,
+            "int", cx + 32, "int", cy + 1046, "uint", 0x00CC0020))
+            throw Error("capture failed")
+        DllCall("GdiFlush")
+        grid := []
+        Loop h {
+            row := [], base := (A_Index - 1) * w * 4
+            Loop w
+                row.Push(NumGet(bits, base + (A_Index - 1) * 4, "uint") & 0xFFFFFF)
+            grid.Push(row)
+        }
+        return grid
+    } finally {
+        if (old && old != -1)
+            DllCall("SelectObject", "ptr", mdc, "ptr", old)
+        if (dib)
+            DllCall("DeleteObject", "ptr", dib)
+        if (mdc)
+            DllCall("DeleteDC", "ptr", mdc)
+        if (hdc)
+            DllCall("ReleaseDC", "ptr", 0, "ptr", hdc)
+    }
+}
+
+; 격자에서 막대 띠를 찾는다. 체력 칸(x 32~163)과 방어구 칸(x 168~296)을 2px 간격으로 세로 검사한다.
+; 체력 칸 3/4 이상이 띠면 HUD 다. 나침반 N 아이콘·지도 블립이 칸 몇 개를 가려도 남는다(1010 실측 N 이 x 60~76, 1022 블립이 x 52~60).
+; 빈사 깜빡임처럼 체력 칸이 절반만 띠로 보이면 방어구 칸 2/3 이상이 띠일 때 인정한다.
+HealthHudBand(grid) {
+    if (!(grid is Array) || grid.Length < 15)
+        return false
+    health := 0, healthN := 0, armor := 0, armorN := 0
+    x := 1
+    while (x <= 265) {
+        if (x <= 132)
+            healthN++, health += HealthHudColumn(grid, x)
+        else if (x >= 137)
+            armorN++, armor += HealthHudColumn(grid, x)
+        x += 2
+    }
+    return health * 4 >= healthN * 3 || (health * 2 >= healthN && armor * 3 >= armorN * 2)
+}
+
+; 한 칸이 띠인지: 막대 9줄(y 1049~1057)이 가운데 줄과 채널마다 20 안으로 같고, 그 색에 채도가 있으며(최대-최소 채널 ≥ 20),
+; 막대 아래 줄(y 1059)은 어둡고(최대 채널 ≤ 96) 막대보다 24 이상 어둡다. 로딩·일시정지의 검은 화면, MCT 터미널의 평평한 검정·보라 바탕은
+; 채도나 아래 테두리 대비가 없어 띠가 아니다.
+HealthHudColumn(grid, x) {
+    mid := grid[8][x]
+    r := (mid >> 16) & 255, g := (mid >> 8) & 255, b := mid & 255
+    peak := Max(r, g, b)
+    if (peak - Min(r, g, b) < 20)
+        return false
+    y := 4
+    while (y <= 12) {
+        c := grid[y][x]
+        if (Abs(((c >> 16) & 255) - r) > 20 || Abs(((c >> 8) & 255) - g) > 20 || Abs((c & 255) - b) > 20)
+            return false
+        y++
+    }
+    below := grid[14][x]
+    belowPeak := Max((below >> 16) & 255, (below >> 8) & 255, below & 255)
+    return belowPeak <= 96 && peak - belowPeak >= 24
+}
+
+; 보조 색 판정(막대 가운데 줄 표본). 깎인 체력 칸은 어두운 초록(24562D)으로 남으므로 밝은 칸과 어두운 칸을 합쳐 보고 남은 체력 양은 따지지 않는다.
 HealthHudColors(colors) {
     if (colors.Length < 16)
         return false
-    ; 깎인 체력 칸은 어두운 초록(24562D)으로 남는다. 막대 길이는 밝은 칸과 어두운 칸을 합쳐 보고, 남은 체력 양은 따지지 않는다
-    ; (1030 03:50~ 실측: 체력 약 70% 에서 밝은 칸 22/32 라 75% 기준에 걸려 금고·앱 파견이 10시간 'HUD 미확인').
     bar := 0
     for color in colors {
         r := (color >> 16) & 255, g := (color >> 8) & 255, b := color & 255
