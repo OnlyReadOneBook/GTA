@@ -1503,6 +1503,7 @@ EarnPress(key) {
     return !gAbort
 }
 EarnAborted() => gAbort || !gEarnOn
+EarnDismissGameAlert() => false
 EarnMCTSpotSweep() => false
 EarnMCTOpen() {
     throw Error("Initial OCR stop must not open MCT")
