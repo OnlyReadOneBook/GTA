@@ -66,6 +66,8 @@ global gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gCon
 global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map(), gGlitch := Map()
 global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
 IsGTAActive() => false
+; 이 시험은 게임 창이 없어 HealthHudVisible 이 격자를 뜨기 전에 끝난다. 화면 캡처(HealthHudGrid)는 싣지 않고 이름만 둔다.
+HealthHudGrid(*) => []
 EarnAborted() => gAbort
 RunClaimTimingTests()
 RunTests()
