@@ -2802,29 +2802,31 @@ EarnMCTRecoveryHud() => hud
 '@
     Invoke-EarnOfflineCheck 'MCTRecoveryArrived' 'EarnMCTRecoveryArrived' $recoveryArrivedDriver 4
     $recoveryHudDriver = @'
-global EARN_PROMPT_AREA := [], overlay := "", healthColor := 0xAAFFB4
-for scenario in [[0xAAFFB4,"",true],[0x000000,"",false],[0xFFFFFF,"",false],
-    [0xAAFFB4,"interaction",false],[0xAAFFB4,"afk_phone_frame",false],
-    [0xAAFFB4,"ph_joblist_sel",false],[0xAAFFB4,"ph_vinewood_sel",false],
-    [0xAAFFB4,"afk_vinewood_title",false],[0xAAFFB4,"mct_title",false],[0xAAFFB4,"mct_seated",false]] {
-    healthColor := scenario[1], overlay := scenario[2]
-    if (EarnMCTRecoveryHud() != scenario[3])
-        throw Error("HDR recovery HUD must exclude menus/phone/terminal despite visible health bar: " overlay)
+global EARN_PROMPT_AREA := [], overlay := "", healthPct := 100, hudGain := 1.0, hudHidden := false
+; [체력 %, HDR 배율, HUD 숨김, 겹친 화면, 기대]. 막대 띠는 체력 0·30·70·100% 와 HDR 에서 모두 HUD 고, 메뉴·전화·터미널이 겹치면 아니다.
+for scenario in [[100,1.0,false,"",true],[70,1.0,false,"",true],[30,1.55,false,"",true],[0,1.0,false,"",true],[0,1.55,false,"",true],
+    [100,1.0,true,"",false],
+    [70,1.0,false,"interaction",false],[70,1.0,false,"afk_phone_frame",false],
+    [70,1.0,false,"ph_joblist_sel",false],[70,1.0,false,"ph_vinewood_sel",false],
+    [70,1.0,false,"afk_vinewood_title",false],[70,1.0,false,"mct_title",false],[70,1.0,false,"mct_seated",false]] {
+    healthPct := scenario[1], hudGain := scenario[2], hudHidden := scenario[3], overlay := scenario[4]
+    if (EarnMCTRecoveryHud() != scenario[5])
+        throw Error("recovery HUD must follow the bar band and exclude menus/phone/terminal: health=" healthPct " overlay=" overlay)
 }
-FileAppend("PASS MCTRecoveryHud cases=10`n","*")
+FileAppend("PASS MCTRecoveryHud cases=13`n","*")
 ExitApp(0)
 HealthHudVisible() {
-    samples := []
-    Loop 16
-        samples.Push(healthColor)
-    return HealthHudColors(samples)
+    return HealthHudBand(FakeHudGrid(healthPct, hudGain, 100, false, false, hudHidden))
 }
 EarnMenuIsOpen() => overlay = "interaction"
 EarnSeen(name,*) => name = overlay
 '@
     $commonScreen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Core\Screen.ahk') -Raw -Encoding UTF8
-    $recoveryHudDriver += "`n" + (Get-EarnFunctionBody $commonScreen 'HealthHudColors')
-    Invoke-EarnOfflineCheck 'MCTRecoveryHud' 'EarnMCTRecoveryHud' $recoveryHudDriver 10
+    foreach ($helper in @('HealthHudBand', 'HealthHudColumn')) {
+        $recoveryHudDriver += "`n" + (Get-EarnFunctionBody $commonScreen $helper)
+    }
+    $recoveryHudDriver += "`n" + (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'hud-band-fixture.ahk') -Raw -Encoding UTF8)
+    Invoke-EarnOfflineCheck 'MCTRecoveryHud' 'EarnMCTRecoveryHud' $recoveryHudDriver 13
     $safeNavDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings", Map("EarnTurnUnitsPerDeg",29))
 ; Open-safe prompt succeeds before navigation and at the final arrival check.

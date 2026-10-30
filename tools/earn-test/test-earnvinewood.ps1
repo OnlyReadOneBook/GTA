@@ -9,11 +9,13 @@ $ErrorActionPreference = 'Stop'
 $production = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnVinewood.ahk') -Raw -Encoding UTF8
 $screen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk') -Raw -Encoding UTF8
 $commonScreen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Core\Screen.ahk') -Raw -Encoding UTF8
-foreach ($helper in @('HealthHudVisible', 'HealthHudColors')) {
+foreach ($helper in @('HealthHudVisible', 'HealthHudColors', 'HealthHudBand', 'HealthHudColumn')) {
     $match = [regex]::Match($commonScreen, ('(?ms)^' + $helper + '\([^\r\n]*\) \{.*?^\}'))
     if (-not $match.Success) { throw "Missing common HUD helper: $helper" }
     $production += "`n" + $match.Value
 }
+# 시험용 HUD 격자(FakeHudGrid): 체력·방어구·HDR 배율·나침반 가림을 실측 색으로 만든다.
+$production += "`n" + (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'hud-band-fixture.ahk') -Raw -Encoding UTF8)
 foreach ($functionName in @('EarnFindText', 'EarnReadDollars', 'EarnSelectText', 'EarnMenuStepKey')) {
     $match = [regex]::Matches($screen, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}'))
     if ($match.Count -ne 1) { throw "Expected exactly one screen helper: $functionName" }
@@ -64,6 +66,8 @@ global gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gCon
 global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map(), gGlitch := Map()
 global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
 IsGTAActive() => false
+; 이 시험은 게임 창이 없어 HealthHudVisible 이 격자를 뜨기 전에 끝난다. 화면 캡처(HealthHudGrid)는 싣지 않고 이름만 둔다.
+HealthHudGrid(*) => []
 EarnAborted() => gAbort
 RunClaimTimingTests()
 RunTests()
@@ -349,6 +353,26 @@ RunTests() {
     Loop 16
         empty.Push(0x24562D)
     Check(EarnVinewoodHealthColors(empty), "health bar with almost no health left (all dark green) is still the HUD")
+    ; 막대 띠 판정은 체력 양·색과 무관하다. 0·30·70·100% 와 HDR 1.55배, 나침반 N 가림, 빈사 붉은 깜빡임 모두 HUD 다.
+    for pct in [0, 30, 70, 100] {
+        Check(HealthHudBand(FakeHudGrid(pct)), "HUD band at health " pct "%")
+        Check(HealthHudBand(FakeHudGrid(pct, 1.55)), "HUD band at health " pct "% under HDR gain")
+        Check(HealthHudBand(FakeHudGrid(pct, 1.0, 0)), "HUD band at health " pct "% without armor")
+        Check(HealthHudBand(FakeHudGrid(pct, 1.55, 100, true)), "HUD band at health " pct "% with the compass N over the bar")
+        Check(HealthHudBand(FakeHudGrid(pct, 1.0, 100, false, true)), "HUD band at health " pct "% while flashing red")
+    }
+    Check(!HealthHudBand(FakeHudGrid(100, 1.0, 100, false, false, true)), "frame without a bar is not the HUD")
+    for flat in [0x000000, 0x010101, 0xFFFFFF, 0x3F1B56, 0x4D8F4B] {
+        plain := []
+        Loop 15 {
+            row := []
+            Loop 265
+                row.Push(flat)
+            plain.Push(row)
+        }
+        Check(!HealthHudBand(plain), "flat screen is not the HUD " flat)
+    }
+    Check(!HealthHudBand([]) && !HealthHudBand(""), "missing grid is not the HUD")
     Reset("normal", "hud")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys[1] = "Up" && gCEOCalls = 0, "free HUD opens the phone without CEO setup")
     Reset("normal", "hud")
