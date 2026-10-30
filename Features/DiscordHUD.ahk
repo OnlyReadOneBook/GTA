@@ -251,12 +251,9 @@ DiscordHUDOwnedSave(owned) {
         text := ""
         for hwnd, saved in owned
             text .= hwnd "`t" saved.pid "`t" saved.created "`t" saved.title "`n"
-        if (text = "")
-            try FileDelete(DiscordHUDOwnedPath())
-        else {
-            try FileDelete(DiscordHUDOwnedPath())
+        try FileDelete(DiscordHUDOwnedPath())
+        if (text != "")
             FileAppend(text, DiscordHUDOwnedPath(), "UTF-8")
-        }
     }
 }
 
