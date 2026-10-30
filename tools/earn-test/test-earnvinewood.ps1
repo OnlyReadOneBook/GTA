@@ -348,7 +348,7 @@ RunTests() {
     empty := []
     Loop 16
         empty.Push(0x24562D)
-    Check(!EarnVinewoodHealthColors(empty), "dark green alone is not a health bar")
+    Check(EarnVinewoodHealthColors(empty), "health bar with almost no health left (all dark green) is still the HUD")
     Reset("normal", "hud")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys[1] = "Up" && gCEOCalls = 0, "free HUD opens the phone without CEO setup")
     Reset("normal", "hud")
