@@ -373,6 +373,9 @@ EarnTick() {
     fatalReason := ""
     try {
         EarnInputGuardStart()
+        ; 게임 알림(Transaction failed 등)이 떠 있으면 어떤 작업도 화면을 못 본다. 아는 알림이면 먼저 Enter 로 닫는다.
+        if (EarnInputAllowed())
+            EarnDismissGameAlert()
         if (EarnInputAllowed()) {
             if (recovering) {
                 outcome.cleanupOK := gEarnRecovery.mct ? EarnTaskMCTEndWithManualRetry() : EarnVinewoodClose()

@@ -513,6 +513,39 @@ EarnCheckPlace(place) {
 }
 
 ; 체력 막대(왼쪽 아래 미니맵 밑 초록 막대)가 보이면 true. 로딩 화면·일시정지 메뉴·전화기 화면에서는 안 보인다.
+; === 게임 알림 닫기 ===
+; 작업을 시작하기 전에 게임 알림(검은 바탕, 노란 ALERT 로고, 흰 구분선)이 떠 있으면 아는 알림에만 Enter(Continue) 로 닫는다.
+; 1030 21:3x~22:33: "Transaction failed because inventory or price data is invalid. Please reboot the game to refresh the game catalog
+; and try again." 이 떠 있는 동안 HUD·접근 안내가 다 가려져 벙커·DJ·창고·금고·직원이 87회 연속 실패했고, 사용자가 Enter 를 누르자
+; 바로 풀렸다(캡처 %TEMP%\claude\gta-earn-fail-20261030-223340-*.png, 로고 폭 15.42%·구분선 폭 64.79%).
+; 판정은 작텔(BotWarp)의 로고 폭·구분선 폭 방식을 그대로 빌린다. quit 로고(게임 종료·세션 나가기)와 모르는 알림에는 키를 보내지 않고
+; 로그만 남긴다(같은 알림은 5분에 한 번). 시험 스크립트에는 BotWarp 가 없으므로 이름으로 부르고, 없으면 알림 없음으로 본다.
+global EARN_ALERT_ENTER := Map("transaction_failed", 1)
+EarnDismissGameAlert() {
+    static lastUnknown := "", lastUnknownTick := 0
+    try {
+        if (!%"BotWarpAlertVisible"%())
+            return false
+        info := ""
+        kind := %"BotWarpAlertKind"%(&info)
+    } catch {
+        return false
+    }
+    if (!EARN_ALERT_ENTER.Has(kind)) {
+        if (kind != lastUnknown || A_TickCount - lastUnknownTick >= 300000) {
+            lastUnknown := kind, lastUnknownTick := A_TickCount
+            EarnLog("게임 알림이 떠 있음: " kind " (" info ") → 아는 알림이 아니라 키를 보내지 않음, 직접 닫아야 함")
+        }
+        return false
+    }
+    if (!EarnPress("Enter"))
+        return false
+    gone := false
+    try gone := %"BotWarpWaitAlertGone"%(3000)
+    EarnLog("게임 알림 " kind " (" info ") 에 Enter → " (gone ? "닫힘" : "3초 안에 안 사라짐"))
+    return gone
+}
+
 EarnHudVisible() {
     hwnd := IsGTAActive()
     if (!hwnd)

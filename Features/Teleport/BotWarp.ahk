@@ -104,9 +104,12 @@ global BOTWARP_LOGO_KINDS := [["quit", 9.5, 12.5], ["alert", 14.0, 17.0], ["conf
 ;   join_session "Are you sure you want to join a different GTA Online session? Progress will be automatically saved."  (그래픽 설정 적용 알림은 68.04)
 ;   targeting    "The Job, Activity or session you're trying to join has a different targeting mode. Do you want to change your targeting mode?"
 ;   incompatible "Failed to join session due to incompatible assets. Return to GTA Online."  (방치 킥 알림 "Kicked from the session for being idle too long." 은 38.44)
+;   transaction_failed "Transaction failed because inventory or price data is invalid. Please reboot the game to refresh the game catalog and try again."
+;                (Continue 뿐. 1030 21:3x~22:33 수익 자동화 실패 캡처 gta-earn-fail-20261030-223340 에서 로고 15.42·구분선 64.79. 작텔은 이 알림에 Enter 하지 않고 수익 자동화만 닫는다)
 ;   quit 로고 알림은 폭과 상관없이 키를 보내지 않는다: 게임 종료 62.58·40.24, 세션 나가기(F5) 35.40, 스토리 모드 49.61
 global BOTWARP_ALERT_LINES := [["start_job", "confirm", 33.33], ["unavailable", "alert", 21.72],
-    ["join_session", "alert", 67.41], ["targeting", "alert", 58.52], ["incompatible", "alert", 39.69]]
+    ["join_session", "alert", 67.41], ["targeting", "alert", 58.52], ["incompatible", "alert", 39.69],
+    ["transaction_failed", "alert", 64.79]]
 global BOTWARP_LINE_TOL := 0.25
 ; 도착 판정: 왼쪽 아래 체력 막대(초록 0x4C8F4C, 1920x1080 에서 y 1049~1057). 로딩·알림 화면에서는 안 보인다
 global BOTWARP_HUD_BAR := [0.021, 0.972, 0.05, 0.978]
