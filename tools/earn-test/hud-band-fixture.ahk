@@ -3,16 +3,18 @@
 ; gain 은 HDR 밝기 배율(1010 실측 1.55, 255 포화). nIcon 이면 나침반 N 아이콘(검정 원·흰 글자)이 체력 칸 x 60~76 을 가린다(1010 실측).
 ; flash 는 빈사 깜빡임의 붉은 막대. hidden 이면 HUD 없는 어두운 바탕만 돌려준다.
 FakeHudGrid(healthPct := 100, gain := 1.0, armorPct := 100, nIcon := false, flash := false, hidden := false) {
-    scale(c) {
-        r := Min(255, Round(((c >> 16) & 255) * gain)), g := Min(255, Round(((c >> 8) & 255) * gain)), b := Min(255, Round((c & 255) * gain))
-        return (r << 16) | (g << 8) | b
-    }
-    frame := scale(0x0B1821), bright := scale(flash ? 0x8F2A2A : 0x4D8F4B), dark := scale(0x24562D)
-    blue := scale(0x1A4B67), blueDark := scale(0x1E2A39), gap := scale(0x0D1923)
-    healthCols := Round(132 * healthPct / 100), armorCols := Round(129 * armorPct / 100)
+    frame := FakeHudScale(0x0B1821, gain)
+    bright := FakeHudScale(flash ? 0x8F2A2A : 0x4D8F4B, gain)
+    dark := FakeHudScale(0x24562D, gain)
+    blue := FakeHudScale(0x1A4B67, gain)
+    blueDark := FakeHudScale(0x1E2A39, gain)
+    gap := FakeHudScale(0x0D1923, gain)
+    healthCols := Round(132 * healthPct / 100)
+    armorCols := Round(129 * armorPct / 100)
     grid := []
     Loop 15 {
-        y := A_Index, row := []
+        y := A_Index
+        row := []
         Loop 265 {
             x := A_Index
             if (hidden || y < 4 || y > 12)
@@ -30,4 +32,11 @@ FakeHudGrid(healthPct := 100, gain := 1.0, armorPct := 100, nIcon := false, flas
         grid.Push(row)
     }
     return grid
+}
+
+FakeHudScale(color, gain) {
+    r := Min(255, Round(((color >> 16) & 255) * gain))
+    g := Min(255, Round(((color >> 8) & 255) * gain))
+    b := Min(255, Round((color & 255) * gain))
+    return (r << 16) | (g << 8) | b
 }
