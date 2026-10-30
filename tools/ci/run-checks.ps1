@@ -25,7 +25,7 @@ $runtimeHash = $null
 $sourceHashes = @()
 $ahkSuites = @('test-earner', 'test-earnledger', 'test-antiafk', 'test-altf4teleport', 'test-botwarp-stop','test-friendwarp', 'test-claw-stop', 'test-autoclick-stop', 'test-held-keys', 'test-earnnav', 'test-earntasks', 'test-earnblip',
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
-    'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-discord-hud', 'test-discordhud-launch', 'test-overlay-place', 'test-memguard', 'test-earndj', 'test-phone-call-template')
+    'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-discord-hud', 'test-discordhud-launch', 'test-overlay-place', 'test-memguard', 'test-earndj', 'test-phone-call-template', 'test-macro-autostart')
 $allAuxChecks = @(
     'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-dj-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture', 'test-gta-mode', 'test-frame-feed', 'test-steam-launch')
 $selectionScript = Join-Path $PSScriptRoot 'check-selection.ps1'
