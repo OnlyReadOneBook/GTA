@@ -339,6 +339,16 @@ RunTests() {
     Check(!EarnVinewoodHealthColors(sparse), "eleven HDR green samples do not establish the health bar")
     sparse[12] := 0xA5FFAC
     Check(EarnVinewoodHealthColors(sparse), "twelve HDR green samples establish the health bar")
+    ; 1030 실측 체력 약 70%: 밝은 칸 22개 뒤에 깎인 어두운 칸 9개, 끝 1개는 막대 밖.
+    hurt := []
+    for c in [0x4D8F4B,0x4D8F4B,0x4D904B,0x4D904C,0x4A8C49,0x4B914F,0x4A904F,0x4A904F,0x4A9150,0x4B9150,0x4B914F,0x4B9150,0x4B9150,0x4B914F,0x4B914F,0x4B9150,
+        0x4C9250,0x4C9250,0x4C9250,0x4B9250,0x4B914F,0x4B9150,0x24562D,0x24572E,0x24562D,0x24562E,0x24562D,0x24562C,0x24582E,0x24572E,0x245830,0x0F1A25]
+        hurt.Push(c)
+    Check(EarnVinewoodHealthColors(hurt), "health bar with lost health (dark green tail) is still the HUD")
+    empty := []
+    Loop 16
+        empty.Push(0x24562D)
+    Check(!EarnVinewoodHealthColors(empty), "dark green alone is not a health bar")
     Reset("normal", "hud")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys[1] = "Up" && gCEOCalls = 0, "free HUD opens the phone without CEO setup")
     Reset("normal", "hud")
