@@ -35,15 +35,14 @@ HealthHudVisible() {
 HealthHudColors(colors) {
     if (colors.Length < 16)
         return false
-    ; 깎인 체력 칸은 어두운 초록(24562D)으로 남는다. 막대 길이는 밝은 칸과 어두운 칸을 합쳐 보고, 남은 체력(밝은 칸)은 조금만 있으면 된다
+    ; 깎인 체력 칸은 어두운 초록(24562D)으로 남는다. 막대 길이는 밝은 칸과 어두운 칸을 합쳐 보고, 남은 체력 양은 따지지 않는다
     ; (1030 03:50~ 실측: 체력 약 70% 에서 밝은 칸 22/32 라 75% 기준에 걸려 금고·앱 파견이 10시간 'HUD 미확인').
-    green := 0, bar := 0
+    bar := 0
     for color in colors {
         r := (color >> 16) & 255, g := (color >> 8) & 255, b := color & 255
-        green += g >= 100 && g-r >= 40 && g-b >= 40 && Abs(r-b) <= 25
         bar += g >= 60 && g-r >= 35 && g-b >= 30 && Abs(r-b) <= 25
     }
-    return green >= 2 && bar * 4 >= colors.Length * 3
+    return bar * 4 >= colors.Length * 3
 }
 
 ; area 는 클라이언트 비율 [x1, y1, x2, y2] (0~1). 찾은 자리(화면 좌표)는 &fx, &fy.
