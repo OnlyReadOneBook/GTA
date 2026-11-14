@@ -2,8 +2,13 @@ name: Close linked issues
 
 # auto-merge.yml 이 github.token 으로 건 자동 머지는 github-actions 앱 명의로 머지되고, 그 경우
 # GitHub 는 PR 본문의 Fixes #N 을 처리하지 않았다(2026-10-08~10-15 머지 PR 70건 대조, 이슈 #320).
-# 머지된 PR 이 참조하는 같은 저장소의 열린 이슈를 여기서 닫는다. 사람이 머지해 이미 닫힌 이슈는 건너뛴다.
+# github.token 명의의 머지는 pull_request 이벤트로 워크플로도 깨우지 않는다. 2026-10-16~10-30 머지
+# PR 60건 중 앱 명의 32건에서 이 워크플로가 한 번도 돌지 않아 #372·#374·#401 이 열린 채 남았다.
+# 그래서 이벤트 하나에 기대지 않고, 일정으로 최근 머지된 PR 을 훑어 참조하는 열린 이슈를 닫는다.
 on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
   pull_request:
     types: [closed]
 
@@ -12,46 +17,53 @@ permissions:
   issues: write
   pull-requests: read
 
+concurrency:
+  group: close-linked-issues
+  cancel-in-progress: false
+
 jobs:
   close:
-    if: >-
-      github.event.pull_request.merged == true
-      && github.event.pull_request.base.ref == github.event.repository.default_branch
-      && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Close open issues the merged pull request references
+      - name: Close open issues that recently merged pull requests reference
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           linked=$(gh api graphql \
-            -f owner="${REPO%%/*}" -f name="${REPO#*/}" -F pr="$PR_NUMBER" \
-            -f query='query($owner: String!, $name: String!, $pr: Int!) {
+            -f owner="${REPO%%/*}" -f name="${REPO#*/}" -f base="$DEFAULT_BRANCH" \
+            -f query='query($owner: String!, $name: String!, $base: String!) {
               repository(owner: $owner, name: $name) {
-                pullRequest(number: $pr) {
-                  closingIssuesReferences(first: 50) {
-                    nodes { number state repository { nameWithOwner } }
+                pullRequests(states: MERGED, baseRefName: $base, first: 30,
+                             orderBy: {field: UPDATED_AT, direction: DESC}) {
+                  nodes {
+                    number url
+                    mergeCommit { oid }
+                    headRepository { nameWithOwner }
+                    closingIssuesReferences(first: 50) {
+                      nodes { number state repository { nameWithOwner } }
+                    }
                   }
                 }
               }
             }' \
-            --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[] | "\(.number)\t\(.state)\t\(.repository.nameWithOwner)"')
+            --jq '.data.repository.pullRequests.nodes[]
+                  | . as $pr
+                  | .closingIssuesReferences.nodes[]
+                  | "\(.number)\t\(.state)\t\(.repository.nameWithOwner)\t\($pr.number)\t\($pr.url)\t\($pr.mergeCommit.oid // "")\t\($pr.headRepository.nameWithOwner // "")"')
           closed=0
-          while IFS=$'\t' read -r number state owner_repo; do
+          while IFS=$'\t' read -r number state owner_repo pr_number pr_url merge_sha head_repo; do
             [ -n "$number" ] || continue
-            if [ "$state" != "OPEN" ] || [ "$owner_repo" != "$REPO" ]; then
-              echo "skip #$number ($state, $owner_repo)"
+            if [ "$state" != "OPEN" ] || [ "$owner_repo" != "$REPO" ] || [ "$head_repo" != "$REPO" ]; then
               continue
             fi
             gh issue close "$number" --repo "$REPO" --reason completed \
-              --comment "$PR_URL 가 main 에 머지되어 닫는다. 머지 커밋 $MERGE_SHA"
-            echo "closed #$number"
+              --comment "$pr_url 가 $DEFAULT_BRANCH 에 머지되어 닫는다. 머지 커밋 $merge_sha"
+            echo "closed #$number (PR #$pr_number)"
             closed=$((closed + 1))
           done <<< "$linked"
-          echo "Linked issues closed by #$PR_NUMBER: $closed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Linked issues closed: $closed" >> "$GITHUB_STEP_SUMMARY"
